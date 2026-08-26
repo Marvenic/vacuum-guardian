@@ -1,0 +1,27 @@
+# Vacuum Guardian - dependencias
+#
+# ALVO: Windows 10 build 1607 (LTSB 2016) do controlador da CNC.
+# Por isso Qt5 (PySide2), nao Qt6: todo Qt6 exige Windows 10 1809+. O Qt 5.15
+# suporta Windows 7/8/10 e o PySide2 e compilado sem ICU (sem dependencia da
+# ICU do sistema, que nao existe no 1607).
+#
+# PYTHON: 3.10 (ultima versao com wheel oficial do PySide2 5.15.2.1).
+PySide2==5.15.2.1
+# numpy < 2: PySide2/shiboken2 5.15.2.1 e o opencv 4.x foram compilados com a
+# ABI do numpy 1.x; numpy 2 causaria crash de ABI no cv2.
+numpy==1.26.4
+# headless: mesmas funcoes de imagem, sem as DLLs de GUI do OpenCV
+opencv-python-headless==4.10.0.84
+mss>=9.0
+loguru>=0.7
+pytest>=8.0
+pyinstaller>=6.10
+# OCR nativo do Windows (Windows.Media.Ocr) - leve, offline, sem PyTorch.
+winrt-runtime
+winrt-Windows.Media.Ocr
+winrt-Windows.Globalization
+winrt-Windows.Graphics.Imaging
+winrt-Windows.Storage.Streams
+winrt-Windows.Foundation
+winrt-Windows.Security.Cryptography
+# easyocr fica como fallback plugavel (TextReader) se o OCR nativo decepcionar no chao de fabrica.

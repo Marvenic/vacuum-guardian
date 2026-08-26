@@ -1,0 +1,13 @@
+.venv/
+.venv310/
+.venv*/
+*.spec.bak
+build/
+dist/
+logs/
+__pycache__/
+*.pyc
+.pytest_cache/
+capture_test.png
+config.json
+assets/templates/*.png

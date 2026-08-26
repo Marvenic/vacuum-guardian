@@ -1,0 +1,140 @@
+=========================================================
+ VACUUM GUARDIAN - Quick start
+=========================================================
+
+WHAT IT DOES
+Watches the OSAI screen. As soon as the operator confirms the two
+blue windows (MATERIAL THICKNESS, then EXCEEDING MATERIAL) the stone
+can move - and from that moment "Vacuum 1" must be ON.
+
+  Vacuum 1 is ON               -> nothing happens
+  Vacuum 1 is OFF              -> RED alarm    (danger: stone loose)
+  Vacuum 1 is not on screen    -> ORANGE alert (nobody checked it)
+
+The orange one matters: the vacuum list on the right of the OSAI
+screen scrolls, so "Vacuum 1" is not always visible. When it is out
+of view the app cannot verify anything, and staying quiet would look
+like "all good". So it asks you to check.
+  => Keep "Vacuum 1" visible on screen while cutting.
+
+It does not modify OSAI and does not connect to the CNC. It only
+watches the screen.
+
+INSTALLATION
+There is no installer. Copy this whole folder to the machine (for
+example C:\VacuumGuardian) and run VacuumGuardian.exe.
+No Python required, no administrator password required.
+IMPORTANT: keep the folder complete - the .exe needs the _internal
+folder next to it.
+
+Requirement: Windows 10 or 11 (64-bit).
+
+---------------------------------------------------------
+CALIBRATION (do this once, with the OSAI screen visible)
+---------------------------------------------------------
+Click "Calibrate ROIs / Templates". The window guides you one
+step at a time: read the instruction on the right, do what it
+says, and press the big green button. It then moves to the
+next step on its own.
+
+  - The bar at the top right says which step you are on.
+  - "Progress" at the bottom right shows what is already
+    captured, so you can stop and come back later - it reopens
+    on the first step still missing.
+  - The button marked "Portugues" switches the guide to
+    Portuguese (and back to English).
+
+The four steps it walks you through, for Vacuum 1:
+  1. Capture the name    -> drag a tight box around just the
+                            text "Vacuum 1" and press the green
+                            button.
+  2. Capture the button  -> drag a box around the ON/OFF button
+                            of that same row.
+  3. Capture ON sample   -> switch Vacuum 1 ON on the OSAI
+                            screen, then press the green button.
+                            Nothing to drag.
+  4. Capture OFF sample  -> switch Vacuum 1 OFF, press the green
+                            button.
+
+For steps 3 and 4 the window hides itself for a second while it
+takes a fresh picture of the screen, then comes back. You do not
+need to close and reopen anything.
+
+Two extra steps at the end are optional and can be skipped with
+"Next".
+
+Then press "Done" and check the panel: turn Vacuum 1 on and off
+and the line must switch between ON (green) and OFF (red).
+Scroll the OSAI menu until it disappears: it must show
+"NOT ON SCREEN" (orange). If it says "NOT ON SCREEN" while the
+text is clearly visible, redo step 1 with a tighter box.
+
+The "Calibration guide" button on the main window shows the same
+instructions for reading, without calibrating anything.
+
+AFTER CALIBRATING: back up the config.json file and the
+assets\templates folder. With those two, the calibration can be
+restored in seconds if the PC is ever rebuilt.
+
+---------------------------------------------------------
+DAY-TO-DAY USE
+---------------------------------------------------------
+- Closing the window does NOT stop monitoring: the app stays in the
+  Windows tray, next to the clock. Green icon = all good,
+  red = alarm, orange = could not verify, grey = cannot read screen.
+- To open the panel: double-click the tray icon.
+- To quit for real: right-click the tray icon -> Exit.
+- To start it together with Windows:
+  Settings -> tick "Start automatically with Windows".
+- The panel line "Cutting (armed)" shows whether the app believes a
+  program is running (that is, both confirmations were accepted).
+
+WHEN THE ALARM FIRES
+  A large window opens in the middle of the screen and pulses so it
+  catches the eye from across the shop floor.
+    RED    "VACUUM IS OFF!"        -> stop: Vacuum 1 is off.
+    ORANGE "CANNOT VERIFY VACUUM"  -> scroll the OSAI menu so
+                                      Vacuum 1 shows, and check it.
+  "Acknowledge" = records in the log that the operator saw it.
+  "Silence"     = stops the sound. This button only appears when the
+                  alarm sound is turned on.
+  The window only disappears once the situation is resolved.
+  If an orange alert turns red, the sound comes back even if it had
+  been silenced - the situation got worse.
+
+SOUND IS OPTIONAL
+  Shops are noisy and many CNC PCs have no speakers, so the alarm
+  sound can be turned off: Settings -> untick "Play alarm sound".
+  The pulsing screen is shown either way - the visual alarm never
+  depends on audio.
+
+---------------------------------------------------------
+FILES CREATED (in this same folder)
+---------------------------------------------------------
+  config.json         -> the calibration. Back it up after calibrating!
+  assets\templates\   -> the images learned during calibration
+  logs\*.log          -> technical log of the day (kept for 30 days)
+  logs\detections.csv -> audit spreadsheet: opens in Excel, records
+                         every state change and every alarm
+
+COMMON PROBLEMS
+  Always "NOT ON SCREEN" -> the menu is scrolled away from Vacuum 1,
+    or the label box in Step 1 was too loose. Keeping the fixed
+    "Locks / Vacuum areas" panel on screen avoids the problem, since
+    that one does not scroll.
+  Never alarms -> check the "Cutting (armed)" line on the panel. If it
+    stays "no", the app is not seeing the two confirmation windows;
+    make sure they are not covered by the Vacuum Guardian window.
+  No alarm sound -> check that "Play alarm sound" is ticked in
+    Settings and check the PC volume; the log shows which sound file
+    is in use.
+  The app will not start -> make sure the _internal folder was copied
+    along with it, and that Windows is 10 or 11 (64-bit).
+
+---------------------------------------------------------
+ABOUT
+---------------------------------------------------------
+Vacuum Guardian - created by Marcos Souza & Andrea Cursino
+Abilix Digital - www.abilixdigital.com
+The same information is available in the app: Settings row ->
+"About" button, or right-click the tray icon -> About.

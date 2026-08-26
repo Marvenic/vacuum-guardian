@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Vacuum Guardian: escudo (guardiao) + manometro com ponteiro (monitoramento).
+       A cor de destaque e o token {ACCENT}, substituido em runtime para refletir
+       o estado (verde = OK, vermelho = alarme, cinza = indefinido). -->
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b3a4b"/>
+      <stop offset="1" stop-color="#0d1b24"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Escudo -->
+  <path d="M128 12 L226 48 V126 C226 184 184 228 128 246 C72 228 30 184 30 126 V48 Z"
+        fill="url(#body)" stroke="{ACCENT}" stroke-width="12" stroke-linejoin="round"/>
+
+  <!-- Escala do manometro: arco tracejado (le-se como ticks) -->
+  <circle cx="128" cy="126" r="74" fill="none" stroke="{ACCENT}" stroke-width="8"
+          stroke-opacity="0.45" stroke-dasharray="4 20" stroke-linecap="round"/>
+
+  <!-- Mostrador -->
+  <circle cx="128" cy="126" r="54" fill="none" stroke="{ACCENT}" stroke-width="12"/>
+
+  <!-- Ponteiro apontando para a zona alta (vacuo ativo) -->
+  <line x1="128" y1="126" x2="92" y2="90" stroke="{ACCENT}" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="128" cy="126" r="12" fill="{ACCENT}"/>
+</svg>
