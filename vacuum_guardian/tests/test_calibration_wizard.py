@@ -291,3 +291,39 @@ def test_wizard_walks_both_indicators_in_order(two_indicators) -> None:  # type:
     # E o passo atual manda no combo do topo, sem o operador ter de trocar.
     assert dialog._guide.current_step().indicator == "Vacuum Pump 1"
     assert dialog._target.currentText() == "Vacuum Pump 1"
+
+
+# -- estado modal (o "congelou e nao deixa nem fechar") --------------------
+
+def test_refresh_screenshot_does_not_end_the_modal_loop(setup) -> None:  # type: ignore[no-untyped-def]
+    """Capturar uma foto nova nao pode encerrar o exec_() da calibracao.
+
+    Bug real na CNC: `_refresh_frame` usava hide(), e hide() num dialogo dentro
+    de exec_() encerra o loop modal na hora. O exec_() retornava no meio da
+    captura, o clique em Done nunca era processado, e sobrava um dialogo ainda
+    modal - com o Qt mantendo a janela principal DESABILITADA no Windows: nao
+    aceitava clique, nao movia, nao fechava.
+    """
+    from PySide2.QtCore import QTimer
+    from PySide2.QtWidgets import QApplication
+
+    dialog, _, _, _ = setup
+    order: list[str] = []
+
+    def refresh() -> None:
+        order.append("refresh")
+        dialog._refresh_frame()
+
+    def done() -> None:
+        order.append("done")
+        dialog.accept()
+
+    QTimer.singleShot(50, refresh)
+    QTimer.singleShot(1200, done)
+    dialog.exec_()
+    order.append("exec_returned")
+
+    # O Done TEM de acontecer antes do exec_() devolver o controle.
+    assert order == ["refresh", "done", "exec_returned"]
+    assert not dialog.isVisible()
+    assert QApplication.activeModalWidget() is None  # nada de modal pendurado

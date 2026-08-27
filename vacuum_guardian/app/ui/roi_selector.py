@@ -232,7 +232,13 @@ class RoiSelectorDialog(QDialog):
         """
         if self._grab_frame is None:
             return False
-        self.hide()
+        # MINIMIZAR, nunca hide(): esta janela roda dentro de exec_(), e
+        # hide() encerra o loop modal na hora. O exec_() retornava no meio da
+        # captura, o Done nunca era processado e sobrava um dialogo visivel e
+        # ainda modal - com o Qt mantendo a janela principal DESABILITADA no
+        # Windows. Era esse o "congelou e nao deixa nem fechar".
+        # Minimizar tira a janela da foto sem mexer no estado modal.
+        self.showMinimized()
         QApplication.processEvents()
         time.sleep(_HIDE_BEFORE_GRAB_S)
         frame, error = None, ""
@@ -247,7 +253,7 @@ class RoiSelectorDialog(QDialog):
                 logger.exception("Screenshot attempt {} failed", attempt)
                 error = str(exc)
                 time.sleep(_RETRY_WAIT_S)
-        self.show()
+        self.showNormal()  # par do showMinimized acima
         self.raise_()
         self.activateWindow()
         if frame is None:
