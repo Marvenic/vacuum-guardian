@@ -123,3 +123,57 @@ def test_works_without_colour_samples(tmp_path: Path) -> None:
     finder = IndicatorFinder(tmp_path / "vacuum_1_label.png", _TOGGLE, 0.75)
     assert finder.read(_screen(80, on=True)).state is PumpState.ON
     assert finder.read(_screen(80, on=False)).state is PumpState.OFF
+
+
+# -- busca rapida (cache da ultima posicao) --------------------------------
+
+def _count_matches(monkeypatch) -> list[tuple[int, int]]:
+    """Registra o TAMANHO de cada imagem passada ao matchTemplate."""
+    import app.vision.finder as finder_module
+
+    sizes: list[tuple[int, int]] = []
+    original = finder_module.cv2.matchTemplate
+
+    def spy(image, template, method):  # type: ignore[no-untyped-def]
+        sizes.append((image.shape[1], image.shape[0]))
+        return original(image, template, method)
+
+    monkeypatch.setattr(finder_module.cv2, "matchTemplate", spy)
+    return sizes
+
+
+def test_second_read_searches_only_around_the_last_position(calibrated: Path, monkeypatch) -> None:
+    """O ganho de desempenho: varrer a tela toda uma vez, depois so a vizinhanca."""
+    finder = _finder(calibrated)
+    screen = _screen(120, on=True)
+    finder.read(screen)  # primeira leitura: varredura completa
+
+    sizes = _count_matches(monkeypatch)
+    finder.read(screen)
+
+    assert len(sizes) == 1
+    searched_w, searched_h = sizes[0]
+    assert searched_w < screen.shape[1] and searched_h < screen.shape[0]
+
+
+def test_small_scroll_stays_on_the_fast_path(calibrated: Path) -> None:
+    """Rolar poucas linhas nao pode custar uma varredura completa."""
+    finder = _finder(calibrated)
+    finder.read(_screen(120, on=True))
+    assert finder.read(_screen(150, on=False)).state is PumpState.OFF
+
+
+def test_large_scroll_falls_back_to_the_full_search(calibrated: Path) -> None:
+    """Fora da janela rapida, ainda tem de encontrar - a rolagem e o motivo do modo."""
+    finder = _finder(calibrated)
+    finder.read(_screen(50, on=True))
+    assert finder.read(_screen(260, on=True)).state is PumpState.ON
+
+
+def test_cache_is_cleared_when_the_item_disappears(calibrated: Path) -> None:
+    """Sumindo da tela, a proxima busca precisa varrer tudo de novo."""
+    finder = _finder(calibrated)
+    finder.read(_screen(120, on=True))
+    assert finder.read(_screen(None)).state is PumpState.NOT_VISIBLE
+    assert finder._last is None
+    assert finder.read(_screen(240, on=False)).state is PumpState.OFF

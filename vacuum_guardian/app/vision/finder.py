@@ -34,6 +34,12 @@ from ..models import PumpState, ToggleGeometry
 _BLUE_LOW = np.array([95, 80, 60], dtype=np.uint8)
 _BLUE_HIGH = np.array([135, 255, 255], dtype=np.uint8)
 
+# Janela da busca rapida em torno da ultima posicao conhecida do rotulo.
+# Vertical generosa: o menu do OSAI rola no eixo Y, entao algumas linhas de
+# deslocamento ainda caem dentro da janela e evitam a varredura completa.
+_MARGIN_X = 80
+_MARGIN_Y = 160
+
 # Usados apenas quando nao ha amostras ON/OFF calibradas.
 _DEFAULT_MIDPOINT = 0.40
 _DEFAULT_MARGIN = 0.10
@@ -69,6 +75,8 @@ class IndicatorFinder:
         self._label = self._load(label_path)
         self._toggle = toggle
         self._threshold = threshold
+        # Ultima posicao onde o rotulo foi visto (cache da busca rapida).
+        self._last: tuple[int, int] | None = None
         # Limiar de cor derivado das AMOSTRAS reais da maquina: mais confiavel
         # que um numero fixo, porque absorve o tema/contraste daquela tela.
         on_sample = self._load(on_sample_path) if on_sample_path else None
@@ -114,24 +122,60 @@ class IndicatorFinder:
             is_on = not is_on
         return (PumpState.ON if is_on else PumpState.OFF), blue
 
-    def read(self, frame: np.ndarray) -> FinderResult:
-        """Procura o rotulo no frame inteiro e devolve o estado do toggle."""
-        if self._label is None or self._toggle is None:
-            return FinderResult(PumpState.NOT_VISIBLE, 0.0)
+    @staticmethod
+    def _best_match(image: np.ndarray, template: np.ndarray) -> tuple[float, tuple[int, int]]:
+        result = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
+        _, score, _, location = cv2.minMaxLoc(result)
+        return float(score), (int(location[0]), int(location[1]))
 
+    def _locate(self, frame: np.ndarray) -> tuple[int, int, float] | None:
+        """Acha o rotulo, tentando primeiro perto de onde ele estava.
+
+        Varrer 1920x1080 custa ~120 ms POR INDICADOR, POR CICLO - o suficiente
+        para estourar o intervalo de captura no PC da CNC e deixar o app
+        arrastado depois de calibrado. Entre dois ciclos o item quase nunca sai
+        do lugar, entao a busca comeca numa janela ao redor da ultima posicao
+        (~10 ms). So quando isso falha e que varre a tela toda, o que preserva
+        a tolerancia a rolagem do menu.
+        """
         label_h, label_w = self._label.shape[:2]
         frame_h, frame_w = frame.shape[:2]
         if frame_h < label_h or frame_w < label_w:
+            return None
+
+        if self._last is not None:
+            last_x, last_y = self._last
+            x0 = max(0, last_x - _MARGIN_X)
+            y0 = max(0, last_y - _MARGIN_Y)
+            x1 = min(frame_w, last_x + label_w + _MARGIN_X)
+            y1 = min(frame_h, last_y + label_h + _MARGIN_Y)
+            if x1 - x0 >= label_w and y1 - y0 >= label_h:
+                score, location = self._best_match(frame[y0:y1, x0:x1], self._label)
+                if score >= self._threshold:
+                    self._last = (x0 + location[0], y0 + location[1])
+                    return self._last[0], self._last[1], score
+
+        score, location = self._best_match(frame, self._label)
+        if score < self._threshold:
+            self._last = None  # sumiu da tela: da proxima vez varre tudo
+            return None
+        self._last = location
+        return location[0], location[1], score
+
+    def read(self, frame: np.ndarray) -> FinderResult:
+        """Procura o rotulo na tela e devolve o estado do toggle ao lado dele."""
+        if self._label is None or self._toggle is None:
             return FinderResult(PumpState.NOT_VISIBLE, 0.0)
 
-        result = cv2.matchTemplate(frame, self._label, cv2.TM_CCOEFF_NORMED)
-        _, score, _, location = cv2.minMaxLoc(result)
-        if score < self._threshold:
+        frame_h, frame_w = frame.shape[:2]
+        found = self._locate(frame)
+        if found is None:
             # O rotulo nao esta na tela (menu rolado) - estado NAO verificavel.
-            return FinderResult(PumpState.NOT_VISIBLE, float(score))
+            return FinderResult(PumpState.NOT_VISIBLE, 0.0)
+        located_x, located_y, score = found
 
-        x = location[0] + self._toggle.dx
-        y = location[1] + self._toggle.dy
+        x = located_x + self._toggle.dx
+        y = located_y + self._toggle.dy
         if x < 0 or y < 0 or x + self._toggle.width > frame_w or y + self._toggle.height > frame_h:
             return FinderResult(PumpState.NOT_VISIBLE, float(score))
 
