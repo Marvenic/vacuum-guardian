@@ -327,3 +327,57 @@ def test_refresh_screenshot_does_not_end_the_modal_loop(setup) -> None:  # type:
     assert order == ["refresh", "done", "exec_returned"]
     assert not dialog.isVisible()
     assert QApplication.activeModalWidget() is None  # nada de modal pendurado
+
+
+# -- roteamento por indicador ---------------------------------------------
+
+def test_target_combo_matches_the_opening_step(setup) -> None:  # type: ignore[no-untyped-def]
+    """O alvo tem de refletir o indicador do passo, ja na abertura.
+
+    Ficava preso no indicador critico ("Vacuum 1") enquanto o assistente
+    mostrava instrucoes do "Vacuum Pump 1" - convite a calibrar o errado.
+    """
+    dialog, _, _, _ = setup
+    assert dialog._guide.current_step().indicator == "Vacuum Pump 1"
+    assert dialog._target.currentText() == "Vacuum Pump 1"
+
+
+def test_wizard_writes_files_for_the_step_indicator(setup) -> None:  # type: ignore[no-untyped-def]
+    """Seguindo o assistente pelo botao verde, o Vacuum Pump 1 tem de ficar
+    calibrado NELE - nao no Vacuum 1."""
+    dialog, config, templates, screen = setup
+    row_y = 80
+
+    _drag(dialog, _ROW_X, row_y, _LABEL_W, _LABEL_H)
+    dialog._guide._run_action()                       # 1. nome
+    _drag(dialog, _ROW_X + _LABEL_W + _GAP, row_y, _TOGGLE_W, _TOGGLE_H)
+    dialog._guide._run_action()                       # 2. botao ON/OFF
+    screen["frame"] = _screen(row_y, on=True)
+    dialog._guide._run_action()                       # 3. amostra ON
+    screen["frame"] = _screen(row_y, on=False)
+    dialog._guide._run_action()                       # 4. amostra OFF
+
+    for name in ("vacuum_pump_1_label.png", "vacuum_pump_1_toggle_on.png",
+                 "vacuum_pump_1_toggle_off.png"):
+        assert (templates / name).exists(), f"faltou {name}"
+    assert config.indicators[0].toggle is not None, "geometria foi para o indicador errado"
+    assert not (templates / "vacuum_1_label.png").exists(), "gravou no Vacuum 1 por engano"
+
+
+def test_calibrated_indicator_is_actually_read(setup) -> None:  # type: ignore[no-untyped-def]
+    """Prova o sintoma relatado: depois de calibrado nao pode ficar 'UNREADABLE'."""
+    dialog, config, templates, screen = setup
+    row_y = 80
+    _drag(dialog, _ROW_X, row_y, _LABEL_W, _LABEL_H)
+    dialog._guide._run_action()
+    _drag(dialog, _ROW_X + _LABEL_W + _GAP, row_y, _TOGGLE_W, _TOGGLE_H)
+    dialog._guide._run_action()
+    screen["frame"] = _screen(row_y, on=True)
+    dialog._guide._run_action()
+    screen["frame"] = _screen(row_y, on=False)
+    dialog._guide._run_action()
+
+    finders = build_finders(templates, config)
+    assert "Vacuum Pump 1" in finders, "nenhum leitor criado para o indicador calibrado"
+    assert finders["Vacuum Pump 1"].read(_screen(row_y, on=True)).state is PumpState.ON
+    assert finders["Vacuum Pump 1"].read(_screen(row_y, on=False)).state is PumpState.OFF
