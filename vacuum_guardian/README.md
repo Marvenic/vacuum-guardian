@@ -1,7 +1,7 @@
 # Vacuum Guardian
 
 Screen monitor for a CMS Brembana CNC (OSAI). It watches the OSAI screen and,
-once the operator confirms the two dialogs that precede a cut, checks that
+once the Iso lines field announces a cut is starting, checks that
 **Vacuum 1** is ON. If it is OFF - or if it cannot be verified - it raises an
 immediate visual and audible alarm.
 
@@ -13,26 +13,27 @@ observes the screen.
 ```
 Capture the OSAI window (mss)
         v
-Native Windows OCR  -> did the operator confirm MATERIAL THICKNESS
-                       and then EXCEEDING MATERIAL?  -> ARMED
+Native Windows OCR on the Iso lines field (bottom left):
+        "CLOSE THE DOORS"      -> DOORS   (about to cut)
+        text changed after it  -> RUNNING (cutting)
 Label search + colour -> state of Vacuum 1 anywhere on screen
         v
-Rule engine (while ARMED):
-        Vacuum 1 ON                    -> silent
-        Vacuum 1 OFF                   -> CRITICAL  (red popup)
-        Vacuum 1 not visible/unreadable-> WARNING   (orange popup)
+Rule engine:
+        DOORS   + Vacuum 1 not ON      -> WARNING   (orange: still in time)
+        RUNNING + Vacuum 1 OFF         -> CRITICAL  (red + override logged)
+        RUNNING + not verifiable       -> WARNING   (orange)
         v
 AlarmController -> popup + looping WAV + CSV audit trail
 ```
 
-### Why the trigger is the confirmation dialogs
+### Why the trigger is the Iso lines field
 
 Every program on this machine is named `<number>.CNC`, so the name says
-nothing about whether the job needs vacuum or whether it already started. What
-does mark the start of the risk is the pair of blue dialogs the operator must
-confirm before cutting: **MATERIAL THICKNESS** then **EXCEEDING MATERIAL**.
-Once the second one is confirmed the stone can move - that is when the guard
-arms itself.
+nothing about whether the job already started. The `Iso lines` list at the
+bottom left does: OSAI writes **CLOSE THE DOORS** there once the file is
+loaded, and replaces it with running code the moment the operator starts the
+cut. Reading one small region also keeps a cycle cheap - the earlier
+confirmation-dialog trigger needed OCR over the whole screen.
 
 ### Why "not visible" is an alarm too
 
@@ -88,8 +89,8 @@ On the machine, with the OSAI screen visible behind the window:
 2. For the samples there is nothing to drag: switch the vacuum on the OSAI
    screen and press the green button. The window hides itself, takes a fresh
    screenshot and finds the indicator on its own - no closing and reopening.
-3. Two optional steps at the end store the confirmation-dialog area and the
-   program-name area.
+3. Capture the **Iso lines** field (required - it is the trigger). A final
+   optional step stores the program-name area.
 
 **Calibration guide** on the main window opens the same script read-only, for
 reading before starting. **Advanced (manual buttons)** inside the calibration
@@ -108,6 +109,7 @@ label is clearly visible, redo the name step with a tighter box (or lower
 | `config.json` | ROIs, monitored programs, threshold, interval |
 | `logs/vacuum_guardian_YYYY-MM-DD.log` | diagnostic log (daily rotation, 30 days) |
 | `logs/detections.csv` | audit trail: state transitions and alarms only |
+| `logs/overrides.csv` | one line per program started with the vacuum off |
 | `assets/templates/<slug>_label.png` | label image searched anywhere on screen |
 | `assets/templates/<slug>_toggle_on/off.png` | colour samples of the two states |
 | `assets/templates/<slug>_on/off.png` | ON/OFF templates (fixed-position mode) |

@@ -16,6 +16,7 @@ pytest.importorskip("PySide2")
 from app.models import AppConfig, IndicatorConfig, Roi, ToggleGeometry  # noqa: E402
 from app.ui.calibration_guide import (  # noqa: E402
     LANGUAGES,
+    REQ_ISO,
     REQ_LABEL,
     REQ_OFF,
     REQ_ON,
@@ -75,6 +76,7 @@ def test_steps_are_in_the_order_the_buttons_must_be_pressed() -> None:
         progress_key("Vacuum 1", REQ_TOGGLE),
         progress_key("Vacuum 1", REQ_ON),
         progress_key("Vacuum 1", REQ_OFF),
+        REQ_ISO,  # area do Iso lines, depois dos indicadores
     ]
 
 
@@ -111,8 +113,10 @@ def test_every_capture_step_has_an_action_button(language: str) -> None:
 def test_required_steps_all_carry_an_action() -> None:
     """Nao pode existir passo obrigatorio sem forma de conclui-lo pelo assistente."""
     for step in build_steps(_NAMES, "en"):
-        if step.requires:
+        if step.requires and step.indicator:
             assert step.requires == progress_key(step.indicator, step.action)
+        elif step.requires:
+            assert step.action == step.requires  # passos gerais (Iso lines)
 
 
 def test_sample_steps_do_not_ask_for_a_drag() -> None:
@@ -173,10 +177,10 @@ def test_checklist_covers_every_indicator(tmp_path: Path) -> None:
 
 
 def test_optional_items_track_the_optional_rois(tmp_path: Path) -> None:
-    config = _config(dialog_roi=Roi(0, 0, 10, 10), program_roi=Roi(0, 0, 10, 10))
+    config = _config(program_roi=Roi(0, 0, 10, 10))
     items, _ = calibration_status(config, tmp_path)
     optional = [item for item in items if item.optional]
-    assert len(optional) == 2
+    assert len(optional) == 1
     assert all(item.done for item in optional)
 
 
@@ -207,7 +211,7 @@ def test_opens_on_the_first_pending_step(qt_app, tmp_path: Path) -> None:
 
 
 def test_opens_on_the_test_step_when_everything_is_done(qt_app, tmp_path: Path) -> None:
-    config = _config()
+    config = _config(iso_roi=Roi(0, 0, 10, 10))
     config.indicators[0].toggle = _TOGGLE
     config.indicators[1].toggle = _TOGGLE
     for slug in ("vacuum_pump_1", "vacuum_1"):

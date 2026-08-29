@@ -80,14 +80,6 @@ class SettingsDialog(QDialog):
             "(must match one of the names above)."
         )
 
-        self._arming = QCheckBox("Alarm only after the OSAI confirmations")
-        self._arming.setChecked(self._draft.arming_enabled)
-        self._arming.setToolTip(
-            "Watches for MATERIAL THICKNESS and EXCEEDING MATERIAL. The alarm "
-            "only arms after both are confirmed - that is when the stone moves.\n"
-            "Turning this off falls back to matching the program name."
-        )
-
         # Autostart nao vive no config.json: seu estado real e a existencia do
         # atalho na pasta Startup, entao lemos e escrevemos direto de la.
         self._autostart = AutoStart()
@@ -124,7 +116,6 @@ class SettingsDialog(QDialog):
         form.addRow("Monitored programs:", self._programs)
         form.addRow("Indicators:", self._indicators)
         form.addRow("Critical indicator:", self._critical)
-        form.addRow("Trigger:", self._arming)
         form.addRow("Alarm sound:", self._sound_check)
         form.addRow("Sound file (WAV):", wav_row)
 
@@ -166,7 +157,6 @@ class SettingsDialog(QDialog):
 
         critical = self._critical.text().strip()
         self._draft.critical_indicator = critical or self._draft.critical_indicator
-        self._draft.arming_enabled = self._arming.isChecked()
 
         self._draft.alarm_sound_enabled = self._sound_check.isChecked()
         wav = self._wav.text().strip()

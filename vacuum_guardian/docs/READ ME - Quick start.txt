@@ -4,7 +4,6 @@
 
 WHAT IT DOES
 Watches the OSAI screen. As soon as the operator confirms the two
-blue windows (MATERIAL THICKNESS, then EXCEEDING MATERIAL) the stone
 can move - and from that moment "Vacuum 1" must be ON.
 
   Vacuum 1 is ON               -> nothing happens
@@ -89,6 +88,16 @@ DAY-TO-DAY USE
 - The panel line "Cutting (armed)" shows whether the app believes a
   program is running (that is, both confirmations were accepted).
 
+HOW IT DECIDES (Iso lines)
+  The app reads the "Iso lines" field at the bottom left of the OSAI
+  screen:
+    - OSAI shows CLOSE THE DOORS  -> ORANGE alert: turn Vacuum 1 on.
+    - The text then changes       -> the program started. If Vacuum 1
+                                     was still off, RED alert, and the
+                                     event is written to
+                                     logs\overrides.csv with date and
+                                     time for the manager.
+
 WHEN THE ALARM FIRES
   A large window opens in the middle of the screen and pulses so it
   catches the eye from across the shop floor.
@@ -116,6 +125,8 @@ FILES CREATED (in this same folder)
   logs\*.log          -> technical log of the day (kept for 30 days)
   logs\detections.csv -> audit spreadsheet: opens in Excel, records
                          every state change and every alarm
+  logs\overrides.csv  -> short list for the manager: every time a
+                         program was started with the vacuum off
 
 COMMON PROBLEMS
   Always "NOT ON SCREEN" -> the menu is scrolled away from Vacuum 1,

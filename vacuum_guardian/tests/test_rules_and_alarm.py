@@ -12,12 +12,14 @@ from app.models import (
     DetectionResult,
     IndicatorReading,
     PumpState,
+    RunPhase,
 )
 from app.services import RuleEngine
 
 
 def _result(
-    pump: PumpState, vacuum1: PumpState, program: str, armed: bool = False
+    pump: PumpState, vacuum1: PumpState, program: str,
+    phase: RunPhase = RunPhase.IDLE,
 ) -> DetectionResult:
     return DetectionResult(
         indicators={
@@ -27,7 +29,7 @@ def _result(
         program_name=program,
         timestamp=datetime.now(),
         elapsed_ms=10.0,
-        armed=armed,
+        run_phase=phase,
     )
 
 
@@ -91,7 +93,7 @@ ALARM = AlarmDecision(
 )
 WARN = AlarmDecision(
     False, (), ("Vacuum1",), level=AlertLevel.WARNING,
-    armed=True, reason="Could not verify Vacuum1",
+    reason="Could not verify Vacuum1",
 )
 CLEAR = AlarmDecision(True, (), ())
 
@@ -171,54 +173,54 @@ def test_sound_enabled_by_default_still_plays() -> None:
     assert status.sound_enabled
 
 
-# -- Momento critico: armado apos as duas confirmacoes do OSAI -------------
+# -- Momento critico: programa rodando (campo Iso lines) -------------------
 
-def test_armed_with_critical_off_is_critical() -> None:
-    """Programa rodando (armado) e Vacuum1 OFF -> vermelho."""
-    decision = ENGINE.evaluate(_result(PumpState.ON, PumpState.OFF, "4986_P4.CNC", armed=True))
+def test_running_with_critical_off_is_critical() -> None:
+    """Programa rodando e Vacuum1 OFF -> vermelho."""
+    decision = ENGINE.evaluate(_result(PumpState.ON, PumpState.OFF, "4986_P4.CNC", RunPhase.RUNNING))
     assert decision.level is AlertLevel.CRITICAL
     assert "Vacuum1" in decision.reason
 
 
-def test_armed_with_critical_not_visible_is_warning() -> None:
+def test_running_with_critical_not_visible_is_warning() -> None:
     """Menu rolado: nao da para verificar -> laranja, nunca silencio."""
     decision = ENGINE.evaluate(
-        _result(PumpState.ON, PumpState.NOT_VISIBLE, "4986_P4.CNC", armed=True)
+        _result(PumpState.ON, PumpState.NOT_VISIBLE, "4986_P4.CNC", RunPhase.RUNNING)
     )
     assert decision.level is AlertLevel.WARNING
-    assert "Could not verify" in decision.reason
+    assert "could not be verified" in decision.reason
 
 
-def test_armed_with_critical_unknown_is_warning() -> None:
+def test_running_with_critical_unknown_is_warning() -> None:
     """Visivel mas ilegivel tambem e 'nao verificado'."""
     decision = ENGINE.evaluate(
-        _result(PumpState.ON, PumpState.UNKNOWN, "4986_P4.CNC", armed=True)
+        _result(PumpState.ON, PumpState.UNKNOWN, "4986_P4.CNC", RunPhase.RUNNING)
     )
     assert decision.level is AlertLevel.WARNING
 
 
-def test_armed_with_critical_on_is_silent() -> None:
-    decision = ENGINE.evaluate(_result(PumpState.OFF, PumpState.ON, "4986_P4.CNC", armed=True))
+def test_running_with_critical_on_is_silent() -> None:
+    decision = ENGINE.evaluate(_result(PumpState.OFF, PumpState.ON, "4986_P4.CNC", RunPhase.RUNNING))
     assert decision.level is AlertLevel.NONE  # o critico e so o Vacuum1
 
 
-def test_not_armed_stays_silent_even_with_vacuum_off() -> None:
+def test_standby_stays_silent_even_with_vacuum_off() -> None:
     """Maquina parada com vacuo desligado e normal - nao pode alarmar."""
-    decision = ENGINE.evaluate(_result(PumpState.OFF, PumpState.OFF, "4986_P4.CNC", armed=False))
+    decision = ENGINE.evaluate(_result(PumpState.OFF, PumpState.OFF, "4986_P4.CNC", RunPhase.IDLE))
     assert decision.level is AlertLevel.NONE
 
 
 def test_critical_indicator_name_matches_ignoring_spaces() -> None:
     """'Vacuum 1' no config deve casar com 'Vacuum1' lido da tela (e vice-versa)."""
     engine = RuleEngine([], critical_indicator="Vacuum 1")
-    decision = engine.evaluate(_result(PumpState.ON, PumpState.OFF, "X.CNC", armed=True))
+    decision = engine.evaluate(_result(PumpState.ON, PumpState.OFF, "X.CNC", RunPhase.RUNNING))
     assert decision.level is AlertLevel.CRITICAL
 
 
 def test_missing_critical_indicator_is_warning_not_silence() -> None:
     """Indicador critico ausente da config nao pode virar 'tudo certo'."""
     engine = RuleEngine([], critical_indicator="Vacuum 9")
-    decision = engine.evaluate(_result(PumpState.ON, PumpState.ON, "X.CNC", armed=True))
+    decision = engine.evaluate(_result(PumpState.ON, PumpState.ON, "X.CNC", RunPhase.RUNNING))
     assert decision.level is AlertLevel.WARNING
 
 

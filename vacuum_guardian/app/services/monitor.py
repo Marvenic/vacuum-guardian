@@ -16,10 +16,10 @@ from loguru import logger
 from ..alarm import AlarmController, AlarmStatus, WinSoundPlayer
 from ..capture import ScreenCapture, WindowLocator
 from ..detection import DetectionService
-from ..detection.arming import ArmingDetector
+from ..detection.arming import IsoLineWatcher
 from ..detection.service import build_finders, build_matchers
-from ..logging import DetectionLog
-from ..models import AlarmDecision, AppConfig, DetectionResult
+from ..logging import DetectionLog, OverrideLog
+from ..models import AlarmDecision, AppConfig, DetectionResult, PumpState, RunPhase
 from ..utils import resource_path
 from ..vision.ocr import TextReader
 from .rule_engine import RuleEngine
@@ -60,22 +60,14 @@ class MonitorEngine:
         except Exception as exc:
             logger.error("Native OCR unavailable ({}) - program name will stay empty", exc)
             reader = NullReader()
-        # Armar/desarmar pelas confirmacoes do OSAI (MATERIAL THICKNESS ->
-        # EXCEEDING MATERIAL). E o gatilho real do risco; o nome do programa
-        # nao serve porque todos se chamam <numero>.CNC.
-        arming = (
-            ArmingDetector(config.thickness_keyword, config.exceeding_keyword)
-            if config.arming_enabled
-            else None
-        )
         self._detection = DetectionService(
             matchers=build_matchers(templates_dir, config.template_threshold, config.indicators),
             reader=reader,
             indicators=config.indicators,
             program_roi=config.program_roi,
             finders=build_finders(templates_dir, config),
-            arming=arming,
-            dialog_roi=config.dialog_roi,
+            iso_watcher=IsoLineWatcher(config.close_doors_keyword) if config.iso_roi else None,
+            iso_roi=config.iso_roi,
         )
         self._rules = RuleEngine(config.trigger_programs, config.critical_indicator)
         # O WAV padrao e recurso EMPACOTADO (fica em _internal/ no executavel),
@@ -90,6 +82,8 @@ class MonitorEngine:
             logger.info("Alarm sound: {}", wav)
         self.alarm = AlarmController(WinSoundPlayer(), wav, config.alarm_sound_enabled)
         self._detection_log = DetectionLog(project_root / "logs" / "detections.csv")
+        self._override_log = OverrideLog(project_root / "logs" / "overrides.csv")
+        self._last_phase = RunPhase.IDLE
         self._last_cycle: float | None = None
         self._fps = 0.0
 
@@ -111,11 +105,12 @@ class MonitorEngine:
         decision = self._rules.evaluate(result)
         alarm_status = self.alarm.update(decision)
         self._detection_log.record(result, decision)  # grava apenas transicoes
+        self._record_override(result)
 
         logger.debug(
-            "cycle: program='{}' armed={} indicators={} alarm={}/{} {:.0f}ms",
+            "cycle: program='{}' phase={} indicators={} alarm={}/{} {:.0f}ms",
             result.program_name,
-            result.armed,
+            result.run_phase.value,
             {k: v.state.value for k, v in result.indicators.items()},
             alarm_status.active,
             alarm_status.level.name,
@@ -127,6 +122,26 @@ class MonitorEngine:
             alarm=alarm_status,
             window_title=window.title if window else None,
             fps=self._fps,
+        )
+
+    def _record_override(self, result: DetectionResult) -> None:
+        """Grava o momento em que o operador partiu com o vacuo fora de ON.
+
+        So na TRANSICAO DOORS -> RUNNING: e ali que ele viu o aviso e seguiu
+        assim mesmo. Depois disso o alarme continua, mas o evento ja foi
+        registrado - o gerente quer um evento por partida, nao um por ciclo.
+        """
+        previous, current = self._last_phase, result.run_phase
+        self._last_phase = current
+        if not (previous is RunPhase.DOORS and current is RunPhase.RUNNING):
+            return
+        critical = self._rules.critical_indicator
+        reading = result.indicators.get(critical)
+        state = reading.state if reading is not None else PumpState.NOT_VISIBLE
+        if state is PumpState.ON:
+            return  # partiu com o vacuo ligado: nada a registrar
+        self._override_log.record(
+            result.timestamp, result.program_name, critical, state.value
         )
 
     def grab_frame(self):  # type: ignore[no-untyped-def]

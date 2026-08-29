@@ -106,12 +106,10 @@ class ConfigService:
                 for ind in c.indicators
             ],
             "program_roi": self._roi_to_dict(c.program_roi),
+            "iso_roi": self._roi_to_dict(c.iso_roi),
+            "close_doors_keyword": c.close_doors_keyword,
             "alarm_wav": c.alarm_wav,
             "alarm_sound_enabled": c.alarm_sound_enabled,
-            "arming_enabled": c.arming_enabled,
-            "thickness_keyword": c.thickness_keyword,
-            "exceeding_keyword": c.exceeding_keyword,
-            "dialog_roi": self._roi_to_dict(c.dialog_roi),
             "critical_indicator": c.critical_indicator,
             "label_threshold": c.label_threshold,
             "guide_language": c.guide_language,
@@ -138,12 +136,12 @@ class ConfigService:
             template_threshold=float(raw.get("template_threshold", defaults.template_threshold)),  # type: ignore[arg-type]
             indicators=indicators,
             program_roi=self._roi_from_dict(raw.get("program_roi")),  # type: ignore[arg-type]
+            iso_roi=self._roi_from_dict(raw.get("iso_roi")),  # type: ignore[arg-type]
+            close_doors_keyword=str(
+                raw.get("close_doors_keyword", defaults.close_doors_keyword)
+            ),
             alarm_wav=str(raw.get("alarm_wav", defaults.alarm_wav)),
             alarm_sound_enabled=bool(raw.get("alarm_sound_enabled", defaults.alarm_sound_enabled)),
-            arming_enabled=bool(raw.get("arming_enabled", defaults.arming_enabled)),
-            thickness_keyword=str(raw.get("thickness_keyword", defaults.thickness_keyword)),
-            exceeding_keyword=str(raw.get("exceeding_keyword", defaults.exceeding_keyword)),
-            dialog_roi=self._roi_from_dict(raw.get("dialog_roi")),  # type: ignore[arg-type]
             critical_indicator=str(raw.get("critical_indicator", defaults.critical_indicator)),
             label_threshold=float(raw.get("label_threshold", defaults.label_threshold)),  # type: ignore[arg-type]
             guide_language=str(raw.get("guide_language", defaults.guide_language)),

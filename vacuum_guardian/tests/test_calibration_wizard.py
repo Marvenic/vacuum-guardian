@@ -21,7 +21,6 @@ from PySide2.QtWidgets import QMessageBox  # noqa: E402
 
 from app.models import AppConfig, IndicatorConfig, PumpState  # noqa: E402
 from app.ui.calibration_guide import (  # noqa: E402
-    ACT_DIALOG,
     REQ_LABEL,
     REQ_OFF,
     REQ_ON,
@@ -163,14 +162,6 @@ def test_sample_before_toggle_area_is_refused(setup) -> None:  # type: ignore[no
     dialog._run_step(REQ_LABEL)
     assert not dialog._run_step(REQ_ON)
     assert not (templates / "vacuum_1_toggle_on.png").exists()
-
-
-def test_optional_dialog_area_uses_the_right_target(setup) -> None:  # type: ignore[no-untyped-def]
-    dialog, config, _, _ = setup
-    _drag(dialog, 5, 5, 200, 30)
-    assert dialog._run_step(ACT_DIALOG)
-    assert config.dialog_roi is not None
-    assert config.program_roi is None  # nao pode ter gravado no alvo errado
 
 
 def test_successful_capture_advances_the_wizard(setup) -> None:  # type: ignore[no-untyped-def]

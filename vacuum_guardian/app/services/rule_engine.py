@@ -24,7 +24,7 @@ AlarmDecision. Isso o torna trivialmente testavel e desacoplado da UI.
 
 from __future__ import annotations
 
-from ..models import AlarmDecision, AlertLevel, DetectionResult, PumpState
+from ..models import AlarmDecision, AlertLevel, DetectionResult, PumpState, RunPhase
 
 
 class RuleEngine:
@@ -70,19 +70,28 @@ class RuleEngine:
         level = AlertLevel.NONE
         reason = ""
 
-        # -- regra principal: momento critico ------------------------------
-        if result.armed:
+        # -- regra do campo Iso lines --------------------------------------
+        # CLOSE THE DOORS = ainda da tempo de ligar o vacuo: aviso laranja.
+        # Texto mudou depois disso = o programa ja esta cortando: vermelho.
+        if result.run_phase is RunPhase.DOORS:
+            reading = self._critical_reading(result)
+            state = reading.state if reading is not None else PumpState.NOT_VISIBLE
+            if state is not PumpState.ON:
+                level = AlertLevel.WARNING
+                reason = (
+                    f"CLOSE THE DOORS: turn {self._critical} ON before starting."
+                    if state is PumpState.OFF
+                    else f"CLOSE THE DOORS: could not verify {self._critical}. Check it."
+                )
+        elif result.run_phase is RunPhase.RUNNING:
             reading = self._critical_reading(result)
             state = reading.state if reading is not None else PumpState.NOT_VISIBLE
             if state is PumpState.OFF:
                 level = AlertLevel.CRITICAL
-                reason = f"{self._critical} is OFF while the program is running."
+                reason = f"Program started with {self._critical} OFF - STOP THE MACHINE."
             elif not state.is_verifiable:
                 level = AlertLevel.WARNING
-                reason = (
-                    f"Could not verify {self._critical}. "
-                    f"Make it visible on the OSAI screen and check it."
-                )
+                reason = f"Program running and {self._critical} could not be verified."
 
         # -- regra secundaria (legado) -------------------------------------
         if monitored and offending and level is not AlertLevel.CRITICAL:
@@ -94,6 +103,5 @@ class RuleEngine:
             offending=offending,
             unknown=unknown,
             level=level,
-            armed=result.armed,
             reason=reason,
         )

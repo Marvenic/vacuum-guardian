@@ -45,7 +45,7 @@ REQ_LABEL = "label"
 REQ_TOGGLE = "toggle"
 REQ_ON = "on"
 REQ_OFF = "off"
-ACT_DIALOG = "dialog"
+REQ_ISO = "iso"
 ACT_PROGRAM = "program"
 
 LANGUAGES = ("en", "pt")
@@ -285,6 +285,27 @@ def _steps_en(indicators: list[str]) -> list[GuideStep]:
     steps.extend(
         [
             GuideStep(
+                anchor="iso",
+                title="Capture the Iso lines field",
+                body=(
+                    "<ul>"
+                    "<li>Drag a box around the <b>Iso lines</b> list at the "
+                    "bottom left of the OSAI screen.</li>"
+                    "<li>Include the whole list, not just one line.</li>"
+                    "<li>Click the green button below.</li>"
+                    "</ul>"
+                ),
+                note=(
+                    "This is what tells the app a cut is about to start: OSAI "
+                    "writes <b>CLOSE THE DOORS</b> there. If the text then "
+                    "changes while the vacuum is off, the operator started "
+                    "anyway - and that is recorded for the manager."
+                ),
+                requires=REQ_ISO,
+                action=REQ_ISO,
+                needs_selection=True,
+            ),
+            GuideStep(
                 anchor="test",
                 title="Test it",
                 body=(
@@ -313,22 +334,6 @@ def _steps_en(indicators: list[str]) -> list[GuideStep]:
                     "With those two, the calibration can be restored in seconds if "
                     "the PC is ever rebuilt."
                 ),
-            ),
-            GuideStep(
-                anchor="dialogs",
-                title="Optional: confirmation dialogs",
-                body=(
-                    "Drag a box over the area where the blue confirmation windows "
-                    "appear (MATERIAL THICKNESS / EXCEEDING MATERIAL), then click "
-                    "the green button below."
-                ),
-                note=(
-                    "Optional: without it the app searches the whole screen, which "
-                    "also works - this only makes it faster. Click <b>Next</b> to "
-                    "skip."
-                ),
-                action=ACT_DIALOG,
-                needs_selection=True,
             ),
             GuideStep(
                 anchor="program",
@@ -375,6 +380,27 @@ def _steps_pt(indicators: list[str]) -> list[GuideStep]:
     steps.extend(
         [
             GuideStep(
+                anchor="iso",
+                title="Capturar o campo Iso lines",
+                body=(
+                    "<ul>"
+                    "<li>Arraste um retangulo em volta da lista <b>Iso lines</b>, "
+                    "no canto inferior esquerdo da tela do OSAI.</li>"
+                    "<li>Pegue a lista inteira, nao so uma linha.</li>"
+                    "<li>Clique no botao verde abaixo.</li>"
+                    "</ul>"
+                ),
+                note=(
+                    "E por ali que o app sabe que um corte vai comecar: o OSAI "
+                    "escreve <b>CLOSE THE DOORS</b> nesse campo. Se o texto mudar "
+                    "com o vacuo desligado, o operador iniciou assim mesmo - e "
+                    "isso fica registrado para o gerente."
+                ),
+                requires=REQ_ISO,
+                action=REQ_ISO,
+                needs_selection=True,
+            ),
+            GuideStep(
                 anchor="test",
                 title="Testar",
                 body=(
@@ -404,22 +430,6 @@ def _steps_pt(indicators: list[str]) -> list[GuideStep]:
                     "Com esses dois, a calibracao e restaurada em segundos se o PC "
                     "for formatado."
                 ),
-            ),
-            GuideStep(
-                anchor="dialogs",
-                title="Opcional: janelas de confirmacao",
-                body=(
-                    "Arraste um retangulo sobre a regiao onde aparecem as janelas "
-                    "azuis (MATERIAL THICKNESS / EXCEEDING MATERIAL) e clique no "
-                    "botao verde abaixo."
-                ),
-                note=(
-                    "Opcional: sem isso o app procura na tela inteira, o que tambem "
-                    "funciona - so fica mais rapido. Clique em <b>Proximo</b> para "
-                    "pular."
-                ),
-                action=ACT_DIALOG,
-                needs_selection=True,
             ),
             GuideStep(
                 anchor="program",
@@ -455,7 +465,7 @@ _UI = {
             REQ_TOGGLE: "ON/OFF button",
             REQ_ON: "ON sample",
             REQ_OFF: "OFF sample",
-            ACT_DIALOG: "Confirmation dialogs area",
+            REQ_ISO: "Iso lines area",
             ACT_PROGRAM: "Program name area",
         },
         "actions": {
@@ -463,7 +473,7 @@ _UI = {
             REQ_TOGGLE: "Capture the ON/OFF button",
             REQ_ON: "Capture ON sample",
             REQ_OFF: "Capture OFF sample",
-            ACT_DIALOG: "Capture dialogs area",
+            REQ_ISO: "Capture Iso lines area",
             ACT_PROGRAM: "Capture program name area",
         },
     },
@@ -480,7 +490,7 @@ _UI = {
             REQ_TOGGLE: "Botao ON/OFF",
             REQ_ON: "Amostra LIGADO",
             REQ_OFF: "Amostra DESLIGADO",
-            ACT_DIALOG: "Area das janelas de confirmacao",
+            REQ_ISO: "Area do campo Iso lines",
             ACT_PROGRAM: "Area do nome do programa",
         },
         "actions": {
@@ -488,7 +498,7 @@ _UI = {
             REQ_TOGGLE: "Capturar o botao ON/OFF",
             REQ_ON: "Capturar amostra LIGADO",
             REQ_OFF: "Capturar amostra DESLIGADO",
-            ACT_DIALOG: "Capturar area das janelas",
+            REQ_ISO: "Capturar area do Iso lines",
             ACT_PROGRAM: "Capturar area do nome",
         },
     },
@@ -549,7 +559,9 @@ def calibration_status(
                 )
             )
 
-    items.append(ChecklistItem(names[ACT_DIALOG], config.dialog_roi is not None, True))
+    if config.iso_roi is not None:
+        done.add(REQ_ISO)
+    items.append(ChecklistItem(names[REQ_ISO], config.iso_roi is not None, False))
     items.append(ChecklistItem(names[ACT_PROGRAM], config.program_roi is not None, True))
     return items, done
 

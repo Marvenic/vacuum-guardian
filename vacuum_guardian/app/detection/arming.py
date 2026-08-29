@@ -1,74 +1,71 @@
-"""Detecta o MOMENTO CRITICO a partir das confirmacoes do OSAI.
+"""Detecta a largada de um programa lendo o campo "Iso lines" do OSAI.
 
 Contexto de chao de fabrica: todos os programas se chamam <numero>.CNC, entao
-o nome nao diz se aquele trabalho exige vacuo, nem se ja comecou. O que marca
-o inicio real do risco e a sequencia de duas janelas azuis que o operador
-precisa confirmar antes do corte:
+o nome nao diz se aquele trabalho ja comecou. Quem conta isso e o campo
+"Iso lines" (canto inferior esquerdo), que o proprio OSAI atualiza conforme a
+execucao.
 
-    MATERIAL THICKNESS  ->  EXCEEDING MATERIAL  ->  (a pedra se move)
+    stand-by  -> codigo irrelevante
+    carregou  -> "CLOSE THE DOORS"      -> hora de conferir o vacuo
+    iniciou   -> o texto muda           -> a pedra pode se mover
 
-Enquanto elas estao na tela a maquina ainda esta parada. Quando a SEGUNDA
-desaparece (confirmada), entra o periodo em que o vacuo precisa estar ligado:
-e ai que o guardiao "arma".
-
-Desarmar: quando a sequencia recomeca (novo trabalho) ou explicitamente pelo
-operador. Sem sinal confiavel de "corte terminou" na tela, preferimos
-continuar armado - falso alarme incomoda, falta de alarme machuca.
+A versao anterior armava pelas janelas MATERIAL THICKNESS / EXCEEDING
+MATERIAL. Foi removida: o campo Iso lines cobre o mesmo momento com leitura
+mais confiavel, e sem precisar de OCR na tela inteira.
 """
 
 from __future__ import annotations
 
-from enum import Enum
-
 from loguru import logger
 
-
-class ArmingState(Enum):
-    IDLE = "IDLE"                    # nada acontecendo
-    THICKNESS = "THICKNESS"          # 1a janela na tela
-    EXCEEDING = "EXCEEDING"          # 2a janela na tela
-    ARMED = "ARMED"                  # ambas confirmadas: pedra pode se mover
+from ..models import RunPhase
 
 
-class ArmingDetector:
-    """Acompanha a sequencia das duas confirmacoes via texto lido da tela."""
+class IsoLineWatcher:
+    """Le o campo "Iso lines" e diz em que fase da largada o operador esta.
 
-    def __init__(self, thickness_keyword: str = "THICKNESS",
-                 exceeding_keyword: str = "EXCEEDING") -> None:
-        self._thickness = thickness_keyword.upper()
-        self._exceeding = exceeding_keyword.upper()
-        self._state = ArmingState.IDLE
+    Mais confiavel que o nome do programa (todos sao <numero>.CNC) e mais
+    direto que as janelas de confirmacao: o proprio OSAI escreve CLOSE THE
+    DOORS ali antes de liberar o corte.
+
+        stand-by  -> texto qualquer, sem relevancia          -> IDLE
+        carregou  -> "CLOSE THE DOORS"                       -> DOORS
+        iniciou   -> o texto muda (viraram linhas de codigo) -> RUNNING
+
+    Sair de DOORS direto para RUNNING e a evidencia de que o operador seguiu
+    em frente: se o vacuo nao estava ligado, ele ignorou o aviso.
+    """
+
+    def __init__(self, keyword: str = "CLOSE THE DOOR") -> None:
+        self._keyword = keyword.upper()
+        self._phase = RunPhase.IDLE
+        self._doors_text = ""  # texto exato visto no aviso, para detectar mudanca
 
     @property
-    def state(self) -> ArmingState:
-        return self._state
+    def phase(self) -> RunPhase:
+        return self._phase
 
-    @property
-    def armed(self) -> bool:
-        return self._state is ArmingState.ARMED
+    def _to(self, phase: RunPhase) -> None:
+        if phase is not self._phase:
+            logger.info("Iso lines: {} -> {}", self._phase.value, phase.value)
+            self._phase = phase
 
-    def _to(self, state: ArmingState) -> None:
-        if state is not self._state:
-            logger.info("Arming: {} -> {}", self._state.value, state.value)
-            self._state = state
+    def update(self, iso_text: str) -> RunPhase:
+        """Processa o texto do campo Iso lines de um ciclo."""
+        text = (iso_text or "").upper().strip()
 
-    def update(self, screen_text: str) -> bool:
-        """Processa o texto da tela de um ciclo. Retorna se esta armado."""
-        text = (screen_text or "").upper()
-        has_thickness = self._thickness in text
-        has_exceeding = self._exceeding in text
+        if self._keyword in text:
+            self._doors_text = text
+            self._to(RunPhase.DOORS)
+        elif self._phase is RunPhase.DOORS and text and text != self._doors_text:
+            # O aviso saiu e entrou outro conteudo: o programa comecou.
+            self._to(RunPhase.RUNNING)
+        elif self._phase is RunPhase.RUNNING and not text:
+            # ponytail: tela vazia = voltou ao stand-by. Sem sinal explicito de
+            # "terminou", so o campo esvaziar encerra o ciclo.
+            self._to(RunPhase.IDLE)
+        return self._phase
 
-        if has_thickness:
-            # A 1a janela reaparecendo significa NOVO trabalho: reinicia o
-            # ciclo (e desarma um armamento anterior que tenha ficado ativo).
-            self._to(ArmingState.THICKNESS)
-        elif has_exceeding and self._state in (ArmingState.THICKNESS, ArmingState.EXCEEDING):
-            self._to(ArmingState.EXCEEDING)
-        elif self._state is ArmingState.EXCEEDING and not has_exceeding:
-            # A 2a janela sumiu = o operador confirmou. Comeca o risco.
-            self._to(ArmingState.ARMED)
-        return self.armed
-
-    def disarm(self) -> None:
-        """Encerra o periodo critico (ex.: operador reconheceu o alarme)."""
-        self._to(ArmingState.IDLE)
+    def reset(self) -> None:
+        self._to(RunPhase.IDLE)
+        self._doors_text = ""

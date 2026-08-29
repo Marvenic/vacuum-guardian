@@ -8,6 +8,7 @@ from .core import (
     IndicatorConfig,
     IndicatorReading,
     PumpState,
+    RunPhase,
     Roi,
     ToggleGeometry,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "IndicatorConfig",
     "IndicatorReading",
     "PumpState",
+    "RunPhase",
     "Roi",
     "ToggleGeometry",
 ]

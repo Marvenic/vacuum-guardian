@@ -44,6 +44,19 @@ class AlertLevel(Enum):
         return self.value < other.value
 
 
+class RunPhase(Enum):
+    """Onde o operador esta na largada de um programa, lido no campo Iso lines.
+
+    Em stand-by o campo mostra codigo irrelevante. Ao carregar o arquivo o
+    OSAI pede CLOSE THE DOORS - e o aviso de que o corte vai comecar. Quando
+    esse texto sai e o conteudo muda, o programa esta rodando de fato.
+    """
+
+    IDLE = "IDLE"        # stand-by
+    DOORS = "DOORS"      # "CLOSE THE DOORS" na tela: hora de conferir o vacuo
+    RUNNING = "RUNNING"  # texto mudou depois do aviso: programa em execucao
+
+
 @dataclass(frozen=True)
 class Roi:
     """Regiao de interesse em pixels, relativa ao canto superior-esquerdo da JANELA do OSAI.
@@ -117,9 +130,7 @@ class DetectionResult:
     program_name: str
     timestamp: datetime
     elapsed_ms: float  # tempo total de processamento do ciclo
-    # True quando as duas confirmacoes (MATERIAL THICKNESS -> EXCEEDING
-    # MATERIAL) ja foram aceitas: a partir daqui a pedra pode se mover.
-    armed: bool = False
+    run_phase: RunPhase = RunPhase.IDLE  # lido no campo Iso lines
 
 
 @dataclass(frozen=True)
@@ -130,7 +141,6 @@ class AlarmDecision:
     offending: tuple[str, ...]  # indicadores confirmados OFF
     unknown: tuple[str, ...]    # indicadores que nao puderam ser lidos
     level: AlertLevel = AlertLevel.NONE
-    armed: bool = False
     reason: str = ""  # texto pronto para o popup, montado pelo Rule Engine
 
     @property
@@ -162,17 +172,16 @@ class AppConfig:
     alarm_sound_enabled: bool = True
 
     # -- momento critico (armar/desarmar) ---------------------------------
-    # O ponto de risco nao e "programa carregado", e sim o instante apos o
-    # operador confirmar as duas janelas azuis do OSAI: dali em diante a
-    # pedra se move. Detectar essa sequencia e mais confiavel que ler o nome
-    # do programa (todos se chamam <numero>.CNC).
-    arming_enabled: bool = True
-    thickness_keyword: str = "THICKNESS"
-    exceeding_keyword: str = "EXCEEDING"
-    dialog_roi: Roi | None = None  # None = procura as janelas no frame inteiro
+    # O ponto de risco e lido no campo "Iso lines" do OSAI (ver RunPhase):
+    # mais confiavel que o nome do programa, porque todos se chamam
+    # <numero>.CNC.
     # Indicador que DEVE estar ON no momento critico. "Vacuum 1" e o mais
     # importante: sem ele a pedra nao esta presa.
     critical_indicator: str = "Vacuum 1"
+    # Campo "Iso lines" (canto inferior esquerdo do OSAI): e onde aparece o
+    # pedido CLOSE THE DOORS antes do corte. None = recurso desligado.
+    iso_roi: Roi | None = None
+    close_doors_keyword: str = "CLOSE THE DOOR"  # sem o S: casa singular e plural
     label_threshold: float = 0.75  # score minimo para dar o rotulo como encontrado
     # Idioma do guia de calibracao ("en"/"pt"). E o unico texto bilingue do
     # app: o operador alterna no proprio painel e a escolha fica gravada.

@@ -4,7 +4,7 @@ Responsabilidade unica: recortar as ROIs configuradas e delegar
 - estado de cada indicador  -> TemplateMatcher (ROI fixa) ou IndicatorFinder
                                (busca por rotulo, tolerante a rolagem)
 - nome do programa          -> TextReader (OCR)
-- janelas de confirmacao    -> TextReader (OCR) + ArmingDetector
+- fase da execucao          -> TextReader (OCR) + IsoLineWatcher
 Nao conhece mss, Qt nem regras de alarme; recebe dependencias prontas
 (injecao de dependencia), o que permite testar com imagens sinteticas.
 
@@ -30,11 +30,12 @@ from ..models import (
     IndicatorReading,
     PumpState,
     Roi,
+    RunPhase,
 )
 from ..vision import TemplateMatcher
 from ..vision.finder import IndicatorFinder
 from ..vision.ocr import TextReader
-from .arming import ArmingDetector
+from .arming import IsoLineWatcher
 
 
 def build_matchers(
@@ -85,20 +86,16 @@ class DetectionService:
         indicators: list[IndicatorConfig],
         program_roi: Roi | None,
         finders: dict[str, IndicatorFinder] | None = None,
-        arming: ArmingDetector | None = None,
-        dialog_roi: Roi | None = None,
+        iso_watcher: IsoLineWatcher | None = None,
+        iso_roi: Roi | None = None,
     ) -> None:
         self._matchers = matchers
         self._reader = reader
         self._indicators = indicators
         self._program_roi = program_roi
         self._finders = finders or {}
-        self._arming = arming
-        self._dialog_roi = dialog_roi
-
-    @property
-    def arming(self) -> ArmingDetector | None:
-        return self._arming
+        self._iso_watcher = iso_watcher
+        self._iso_roi = iso_roi
 
     @staticmethod
     def _crop(frame: np.ndarray, roi: Roi) -> np.ndarray | None:
@@ -132,23 +129,21 @@ class DetectionService:
         match = matcher.match(crop)
         return IndicatorReading(match.state, match.confidence)
 
-    def _update_arming(self, frame: np.ndarray) -> bool:
-        """Le o texto onde as janelas de confirmacao aparecem e atualiza o estado."""
-        if self._arming is None:
-            return False
-        region = frame
-        if self._dialog_roi is not None and self._dialog_roi.is_valid():
-            crop = self._crop(frame, self._dialog_roi)
-            if crop is not None:
-                region = crop
-        return self._arming.update(self._reader.read_text(region))
+    def _update_iso(self, frame: np.ndarray) -> RunPhase:
+        """Le o campo Iso lines (ROI pequena) e atualiza a fase da largada."""
+        if self._iso_watcher is None or self._iso_roi is None or not self._iso_roi.is_valid():
+            return RunPhase.IDLE
+        crop = self._crop(frame, self._iso_roi)
+        if crop is None:
+            return self._iso_watcher.phase
+        return self._iso_watcher.update(self._reader.read_text(crop))
 
     def detect(self, frame: np.ndarray) -> DetectionResult:
         """Executa um ciclo completo de deteccao sobre o frame."""
         start = time.perf_counter()
 
         readings = {ind.name: self._read_indicator(frame, ind) for ind in self._indicators}
-        armed = self._update_arming(frame)
+        phase = self._update_iso(frame)
 
         program_name = ""
         if self._program_roi is not None and self._program_roi.is_valid():
@@ -162,5 +157,5 @@ class DetectionService:
             program_name=program_name,
             timestamp=datetime.now(),
             elapsed_ms=elapsed_ms,
-            armed=armed,
+            run_phase=phase,
         )

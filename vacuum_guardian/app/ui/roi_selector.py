@@ -49,8 +49,8 @@ from PySide2.QtWidgets import (
 
 from ..models import AppConfig, Roi, ToggleGeometry
 from .calibration_guide import (
-    ACT_DIALOG,
     ACT_PROGRAM,
+    REQ_ISO,
     REQ_LABEL,
     REQ_OFF,
     REQ_ON,
@@ -59,7 +59,7 @@ from .calibration_guide import (
 )
 
 _PROGRAM_TARGET = "Program name"
-_DIALOG_TARGET = "Confirmation dialogs (area)"
+_ISO_TARGET = "Iso lines (area)"
 
 # Tempo que a janela fica escondida antes de fotografar a tela. Precisa ser
 # suficiente para o Windows redesenhar o que estava por baixo.
@@ -124,7 +124,7 @@ class RoiSelectorDialog(QDialog):
 
         self._target = QComboBox()
         self._target.addItem(_PROGRAM_TARGET)
-        self._target.addItem(_DIALOG_TARGET)
+        self._target.addItem(_ISO_TARGET)
         for ind in config.indicators:
             self._target.addItem(ind.name)
         self._select_target(config.critical_indicator)
@@ -297,8 +297,8 @@ class RoiSelectorDialog(QDialog):
             if not self._refresh_frame():
                 return False
             return self._capture_sample("on" if action == REQ_ON else "off")
-        if action == ACT_DIALOG:
-            self._select_target(_DIALOG_TARGET)
+        if action == REQ_ISO:
+            self._select_target(_ISO_TARGET)
             return self._save_roi()
         if action == ACT_PROGRAM:
             self._select_target(_PROGRAM_TARGET)
@@ -331,7 +331,7 @@ class RoiSelectorDialog(QDialog):
     def _current_indicator(self):  # type: ignore[no-untyped-def]
         """Indicador selecionado, ou None se o alvo nao for um indicador."""
         target = self._target.currentText()
-        if target in (_PROGRAM_TARGET, _DIALOG_TARGET):
+        if target in (_PROGRAM_TARGET, _ISO_TARGET):
             QMessageBox.warning(self, "Calibration", "Select an indicator first.")
             return None
         return next((i for i in self._config.indicators if i.name == target), None)
@@ -376,8 +376,8 @@ class RoiSelectorDialog(QDialog):
         target = self._target.currentText()
         if target == _PROGRAM_TARGET:
             self._config.program_roi = roi
-        elif target == _DIALOG_TARGET:
-            self._config.dialog_roi = roi
+        elif target == _ISO_TARGET:
+            self._config.iso_roi = roi
         else:
             for ind in self._config.indicators:
                 if ind.name == target:

@@ -29,7 +29,7 @@ from PySide2.QtWidgets import (
 )
 
 from ..config import ConfigService
-from ..models import PumpState
+from ..models import PumpState, RunPhase
 from ..services.monitor import CycleOutcome, MonitorEngine
 from ..utils import resource_path
 from .about_dialog import AboutDialog
@@ -142,7 +142,7 @@ class MainWindow(QMainWindow):
         self._lbl_fps = QLabel("—")
         for label_text, widget in [
             ("Program:", self._lbl_program),
-            ("Cutting (armed):", self._lbl_armed),
+            ("Machine state:", self._lbl_armed),
             ("Monitoring:", self._lbl_monitoring),
             ("Last detection:", self._lbl_last),
             ("FPS:", self._lbl_fps),
@@ -215,9 +215,16 @@ class MainWindow(QMainWindow):
             label.setStyleSheet(f"color: {_STATE_COLORS.get(reading.state, '#757575')};")
 
         self._lbl_program.setText(outcome.result.program_name or "—")
-        armed = outcome.result.armed
-        self._lbl_armed.setText("YES - vacuum required" if armed else "no")
-        self._lbl_armed.setStyleSheet(f"color: {'#c62828' if armed else '#757575'};")
+        # Fase lida no campo Iso lines: e o unico gatilho do app.
+        phase = outcome.result.run_phase
+        if phase is RunPhase.RUNNING:
+            text, colour = "RUNNING - vacuum required", "#c62828"
+        elif phase is RunPhase.DOORS:
+            text, colour = "CLOSE THE DOORS - check vacuum", "#e07000"
+        else:
+            text, colour = "stand-by", "#757575"
+        self._lbl_armed.setText(text)
+        self._lbl_armed.setStyleSheet(f"color: {colour};")
         self._lbl_monitoring.setText(
             f"Window: {outcome.window_title}" if outcome.window_title
             else "OSAI window not found (full screen)"

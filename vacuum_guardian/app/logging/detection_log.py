@@ -13,6 +13,7 @@ operacao continua.
 from __future__ import annotations
 
 import csv
+from datetime import datetime
 from pathlib import Path
 
 from loguru import logger
@@ -34,7 +35,7 @@ class DetectionLog:
         "alarm",
         "elapsed_ms",
         "level",
-        "armed",
+        "phase",
     ]
 
     def __init__(self, path: Path) -> None:
@@ -56,7 +57,7 @@ class DetectionLog:
     def _signature(result: DetectionResult, decision: AlarmDecision) -> str:
         """Identidade do estado atual; muda => vale a pena gravar uma linha."""
         states = ",".join(f"{k}={v.state.value}" for k, v in sorted(result.indicators.items()))
-        return f"{result.program_name}|{states}|{decision.level.name}|{decision.armed}"
+        return f"{result.program_name}|{states}|{decision.level.name}|{result.run_phase.value}"
 
     def record(self, result: DetectionResult, decision: AlarmDecision) -> bool:
         """Grava se o estado mudou desde a ultima linha. Retorna True se gravou."""
@@ -74,7 +75,7 @@ class DetectionLog:
             "YES" if decision.should_alarm else "NO",
             f"{result.elapsed_ms:.1f}",
             decision.level.name,
-            "YES" if decision.armed else "NO",
+            result.run_phase.value,
         ]
         try:
             with self._path.open("a", newline="", encoding="utf-8-sig") as handle:
@@ -82,4 +83,52 @@ class DetectionLog:
         except OSError as exc:
             logger.error("Failed to write the CSV audit trail: {}", exc)
             return False
+        return True
+
+
+class OverrideLog:
+    """Registra quando o operador iniciou o programa mesmo sem o vacuo ligado.
+
+    Arquivo proprio (e nao uma coluna no detections.csv) porque o publico e
+    outro: o gerente quer uma lista curta de "ignorou o aviso e cortou assim
+    mesmo", com data e hora, sem ter de filtrar milhares de linhas.
+
+    Uma linha por evento: a transicao CLOSE THE DOORS -> programa rodando com
+    o vacuo fora do estado ON.
+    """
+
+    _HEADER = ["date", "time", "program", "indicator", "state_at_start"]
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self._ensure_header()
+
+    def _ensure_header(self) -> None:
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            if not self._path.exists() or self._path.stat().st_size == 0:
+                with self._path.open("w", newline="", encoding="utf-8-sig") as handle:
+                    csv.writer(handle, delimiter=";").writerow(self._HEADER)
+        except OSError as exc:
+            logger.error("Could not prepare {}: {}", self._path, exc)
+
+    def record(self, when: datetime, program: str, indicator: str, state: str) -> bool:
+        """Grava um override. Retorna True se conseguiu gravar."""
+        row = [
+            f"{when:%Y-%m-%d}",
+            f"{when:%H:%M:%S}",
+            program,
+            indicator,
+            state,
+        ]
+        try:
+            with self._path.open("a", newline="", encoding="utf-8-sig") as handle:
+                csv.writer(handle, delimiter=";").writerow(row)
+        except OSError as exc:
+            logger.error("Failed to write the override log: {}", exc)
+            return False
+        logger.warning(
+            "OVERRIDE: program started with {} = {} (recorded for the manager)",
+            indicator, state,
+        )
         return True
