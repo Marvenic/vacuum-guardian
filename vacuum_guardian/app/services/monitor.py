@@ -69,6 +69,15 @@ class MonitorEngine:
             iso_watcher=IsoLineWatcher(config.close_doors_keyword) if config.iso_roi else None,
             iso_roi=config.iso_roi,
         )
+        # Sem a area "Iso lines" calibrada nao existe gatilho: o app roda,
+        # mostra os indicadores e NUNCA alarma. Falhar em silencio num app
+        # de seguranca e inaceitavel - registra alto e claro.
+        self.trigger_ready = bool(config.iso_roi and config.iso_roi.is_valid())
+        if not self.trigger_ready:
+            logger.warning(
+                "Iso lines area NOT calibrated - no alarm can ever fire. "
+                "Run the calibration wizard and capture the Iso lines area."
+            )
         self._rules = RuleEngine(config.trigger_programs, config.critical_indicator)
         # O WAV padrao e recurso EMPACOTADO (fica em _internal/ no executavel),
         # enquanto os templates sao GRAVAVEIS e ficam ao lado do .exe - por isso

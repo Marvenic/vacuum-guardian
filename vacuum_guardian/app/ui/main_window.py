@@ -221,6 +221,10 @@ class MainWindow(QMainWindow):
             text, colour = "RUNNING - vacuum required", "#c62828"
         elif phase is RunPhase.DOORS:
             text, colour = "CLOSE THE DOORS - check vacuum", "#e07000"
+        elif not getattr(self._engine, "trigger_ready", True):
+            # Sem a area Iso lines calibrada o alarme nunca dispara; dizer
+            # "stand-by" aqui daria a impressao de que esta tudo pronto.
+            text, colour = "NOT CALIBRATED - alarm disabled", "#c62828"
         else:
             text, colour = "stand-by", "#757575"
         self._lbl_armed.setText(text)

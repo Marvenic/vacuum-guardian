@@ -27,7 +27,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide2.QtCore import Qt, QTimer
-from PySide2.QtGui import QCloseEvent, QFont, QGuiApplication
+from PySide2.QtGui import QColor, QCloseEvent, QFont, QGuiApplication, QPalette
 from PySide2.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from ..models import AlertLevel
@@ -109,19 +109,38 @@ class AlarmPopup(QDialog):
         layout.addLayout(buttons)
 
         # Pulsacao do fundo: so roda enquanto o popup esta visivel.
+        self.setAutoFillBackground(True)  # necessario para a paleta pintar o fundo
         self._bright = True
         self._pulse = QTimer(self)
         self._pulse.setInterval(_PULSE_MS)
         self._pulse.timeout.connect(self._toggle_shade)
+        self._apply_level_style()
         self._apply_shade(bright=True)
 
     # -- aparencia ---------------------------------------------------------
 
     def _apply_shade(self, bright: bool) -> None:
-        light, dark, button_text = _PALETTE[self._level]
-        background = light if bright else dark
+        """Troca so a cor de fundo - roda a cada 700 ms, tem de ser barato.
+
+        Antes isto chamava setStyleSheet(), que re-polia a arvore inteira de
+        widgets duas vezes por segundo. Numa CNC modesta, esse trabalho
+        continuo na thread da UI competia justamente com os cliques do
+        operador no alarme. A paleta troca a cor sem reprocessar estilo.
+        """
+        light, dark, _ = _PALETTE[self._level]
+        palette = self.palette()
+        palette.setColor(QPalette.Window, QColor(light if bright else dark))
+        self.setPalette(palette)
+
+    def _apply_level_style(self) -> None:
+        """Estilos que so mudam com a severidade (raro), nao a cada pulso.
+
+        Nao define o fundo do QDialog de proposito: quem cuida disso e a
+        paleta em _apply_shade. Uma folha de estilo com background-color
+        venceria a paleta e mataria a pulsacao.
+        """
+        _, _, button_text = _PALETTE[self._level]
         self.setStyleSheet(
-            f"QDialog {{ background-color: {background}; }}"
             "QLabel { color: white; }"
             f"QPushButton {{ background-color: white; color: {button_text};"
             f"  font-weight: bold; padding: 18px 44px;"
@@ -174,10 +193,20 @@ class AlarmPopup(QDialog):
             level = AlertLevel.CRITICAL
         level_changed = level is not self._level
         self._level = level
-        self._title.setText(_TITLES[level])
-        self._detail.setText(f"Program: {program or '?'}\n{reason}")
-        self._mute_button.setVisible(sound_enabled)
-        if not self.isVisible():
+
+        # So mexe nos widgets se o texto realmente mudou: este metodo e
+        # chamado a CADA ciclo enquanto o alarme dura.
+        detail = f"Program: {program or '?'}\n{reason}"
+        if detail != self._detail.text():
+            self._detail.setText(detail)
+        if level_changed:
+            self._title.setText(_TITLES[level])
+            self._apply_level_style()
+        if self._mute_button.isVisible() != sound_enabled:
+            self._mute_button.setVisible(sound_enabled)
+
+        first_show = not self.isVisible()
+        if first_show:
             self._resize_to_screen()
             self.showNormal()
             self._bright = True
@@ -188,8 +217,15 @@ class AlarmPopup(QDialog):
             # hora, sem esperar o proximo ciclo da pulsacao.
             self._bright = True
             self._apply_shade(bright=True)
-        self.raise_()
-        self.activateWindow()
+
+        # Trazer para a frente APENAS ao aparecer ou ao piorar de severidade.
+        # Chamar raise_/activateWindow a cada ciclo (1x por segundo) roubava o
+        # foco do proprio operador: o clique nos botoes se perdia entre o
+        # press e o release, e arrastar a janela era cancelado no meio. Era o
+        # "alarme travado, nao da nem para mover" relatado na CNC.
+        if first_show or level_changed:
+            self.raise_()
+            self.activateWindow()
 
     def dismiss(self) -> None:
         """Chamado pela MainWindow quando a condicao cessa - unico caminho de saida."""
