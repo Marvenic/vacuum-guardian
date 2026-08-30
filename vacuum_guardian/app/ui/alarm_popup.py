@@ -1,8 +1,15 @@
-"""Popup de alarme: sempre no topo, impossivel de fechar enquanto a condicao
-persistir.
+"""Popup de alarme: sempre no topo, ate o operador agir.
 
 O popup nao decide nada: MainWindow o mostra/esconde conforme AlarmStatus, e
-os botoes apenas repassam a intencao do operador ao AlarmController.
+os botoes repassam a intencao do operador ao AlarmController.
+
+POR QUE OS BOTOES FECHAM O AVISO: ele cobre a tela do OSAI. Mantendo-o ali
+ate a condicao cessar, o operador ficava impedido de mexer na maquina para
+RESOLVER a propria condicao do alarme - o aviso virava o obstaculo. Agora
+Acknowledge e Silence tiram o aviso da frente e a acao vai para
+logs/alarm_actions.csv: sem o popup na tela, esse registro e a unica prova de
+que alguem viu. O alarme segue ativo por dentro (bandeja e painel continuam
+sinalizando) e o aviso VOLTA se a severidade piorar de laranja para vermelho.
 
 DOIS NIVEIS, cores diferentes (requisito do chao de fabrica):
 - VERMELHO (CRITICAL): o vacuo esta comprovadamente OFF com o programa
@@ -88,10 +95,14 @@ class AlarmPopup(QDialog):
 
         # Lambdas resolvem o atributo NO CLIQUE - permite a MainWindow trocar
         # os callbacks quando o engine e reconstruido (recalibracao).
+        # O clique fecha o aviso IMEDIATAMENTE, sem esperar o proximo ciclo
+        # (ate 1 s de espera passa a sensacao de botao morto - foi o relato).
+        # Quem manda no estado continua sendo o AlarmController; aqui so
+        # antecipamos o que ele decidiria no ciclo seguinte.
         ack = QPushButton("Acknowledge")
-        ack.clicked.connect(lambda: self._on_acknowledge())
+        ack.clicked.connect(lambda: self._act(self._on_acknowledge))
         self._mute_button = QPushButton("Silence")
-        self._mute_button.clicked.connect(lambda: self._on_silence())
+        self._mute_button.clicked.connect(lambda: self._act(self._on_silence))
 
         buttons = QHBoxLayout()
         buttons.addStretch()
@@ -226,6 +237,15 @@ class AlarmPopup(QDialog):
         if first_show or level_changed:
             self.raise_()
             self.activateWindow()
+
+    def _act(self, callback) -> None:  # type: ignore[no-untyped-def]
+        """Repassa a intencao ao controlador e tira o aviso da frente.
+
+        O popup cobre a tela do OSAI: enquanto ele estiver ali o operador nao
+        consegue mexer na maquina para resolver a propria condicao do alarme.
+        """
+        callback()
+        self.dismiss()
 
     def dismiss(self) -> None:
         """Chamado pela MainWindow quando a condicao cessa - unico caminho de saida."""

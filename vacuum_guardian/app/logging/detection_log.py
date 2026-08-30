@@ -132,3 +132,39 @@ class OverrideLog:
             indicator, state,
         )
         return True
+
+
+class AlarmActionLog:
+    """Registra o que o operador fez quando o alarme apareceu.
+
+    Arquivo proprio porque a pergunta e especifica e frequente: "o alarme
+    tocou, alguem viu?". Uma linha por clique, com a severidade e o motivo
+    que estavam na tela naquele instante - depois de dispensado, o popup sai
+    e essa e a unica prova de que o aviso foi visto.
+    """
+
+    _HEADER = ["date", "time", "action", "level", "reason"]
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self._ensure_header()
+
+    def _ensure_header(self) -> None:
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            if not self._path.exists() or self._path.stat().st_size == 0:
+                with self._path.open("w", newline="", encoding="utf-8-sig") as handle:
+                    csv.writer(handle, delimiter=";").writerow(self._HEADER)
+        except OSError as exc:
+            logger.error("Could not prepare {}: {}", self._path, exc)
+
+    def record(self, when: datetime, action: str, level: str, reason: str) -> bool:
+        """Grava uma acao do operador. Retorna True se conseguiu gravar."""
+        row = [f"{when:%Y-%m-%d}", f"{when:%H:%M:%S}", action, level, reason]
+        try:
+            with self._path.open("a", newline="", encoding="utf-8-sig") as handle:
+                csv.writer(handle, delimiter=";").writerow(row)
+        except OSError as exc:
+            logger.error("Failed to write the alarm action log: {}", exc)
+            return False
+        return True

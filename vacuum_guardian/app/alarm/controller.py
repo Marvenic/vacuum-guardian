@@ -19,6 +19,7 @@ nenhuma regra vive na camada grafica.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from loguru import logger
@@ -37,10 +38,18 @@ class AlarmStatus:
     reason: str  # texto pronto para o popup
     sound_enabled: bool = True  # False esconde o botao "Silence" no popup
     level: AlertLevel = AlertLevel.NONE
+    dismissed: bool = False  # operador clicou: o aviso sai da tela
 
     @property
     def popup_should_show(self) -> bool:
-        return self.active
+        """O popup cobre a tela do OSAI, entao some assim que o operador age.
+
+        Antes ele ficava ate a condicao cessar - e o operador nao conseguia
+        mexer na maquina para RESOLVER a condicao. O alarme continua ativo por
+        dentro (bandeja e painel seguem sinalizando) e volta a aparecer se a
+        severidade piorar ou se a condicao ocorrer de novo.
+        """
+        return self.active and not self.dismissed
 
     @property
     def is_critical(self) -> bool:
@@ -48,7 +57,13 @@ class AlarmStatus:
 
 
 class AlarmController:
-    def __init__(self, player: SoundPlayer, wav_path: Path, sound_enabled: bool = True) -> None:
+    def __init__(
+        self,
+        player: SoundPlayer,
+        wav_path: Path,
+        sound_enabled: bool = True,
+        action_log=None,  # AlarmActionLog | None (evita import circular)
+    ) -> None:
         self._player = player
         self._wav_path = wav_path
         # Som opcional (fabrica barulhenta / PC sem alto-falante). Com ele
@@ -60,6 +75,8 @@ class AlarmController:
         self._acknowledged = False
         self._reason = ""
         self._level = AlertLevel.NONE
+        self._dismissed = False
+        self._action_log = action_log
 
     @property
     def level(self) -> AlertLevel:
@@ -76,11 +93,14 @@ class AlarmController:
                 self._active = True
                 self._muted = False
                 self._acknowledged = False
+                self._dismissed = False
             elif escalated:
                 # Laranja -> vermelho: reabre o canal sonoro mesmo se silenciado.
                 logger.warning("ALARM ESCALATED to CRITICAL ({})", self._reason)
                 self._muted = False
                 self._acknowledged = False
+                # Piorou: o aviso volta a tela mesmo tendo sido dispensado.
+                self._dismissed = False
             self._level = decision.level
             if self._sound_enabled and not self._muted:
                 self._player.start_loop(self._wav_path)
@@ -91,26 +111,35 @@ class AlarmController:
             self._active = False
             self._muted = False
             self._acknowledged = False
+            self._dismissed = False
             self._reason = ""
             self._level = AlertLevel.NONE
         return self.status()
 
     def silence(self) -> None:
-        """Botao 'Silenciar': para o som; popup permanece enquanto a condicao durar."""
-        if not self._active:
-            return
-        logger.info("Alarm silenced by the operator")
-        self._muted = True
-        self._player.stop()
+        """Botao 'Silence': para o som, tira o aviso da tela e registra."""
+        self._operator_action("SILENCE", "Alarm silenced by the operator")
 
     def acknowledge(self) -> None:
-        """Botao 'Reconhecer': registra ciencia do operador (e tambem silencia)."""
+        """Botao 'Acknowledge': registra ciencia, para o som e tira da tela."""
+        self._operator_action("ACKNOWLEDGE", "Alarm acknowledged by the operator")
+
+    def _operator_action(self, action: str, message: str) -> None:
+        """Trata os dois botoes: silenciar, dispensar da tela e registrar.
+
+        O registro e a contrapartida de deixar o aviso sumir: sem o popup na
+        tela, a unica prova de que alguem viu o alarme e essa linha.
+        """
         if not self._active:
             return
-        logger.info("Alarm acknowledged by the operator")
-        self._acknowledged = True
+        logger.info("{} [{}] ({})", message, self._level.name, self._reason)
+        if action == "ACKNOWLEDGE":
+            self._acknowledged = True
         self._muted = True
+        self._dismissed = True
         self._player.stop()
+        if self._action_log is not None:
+            self._action_log.record(datetime.now(), action, self._level.name, self._reason)
 
     def status(self) -> AlarmStatus:
         return AlarmStatus(
@@ -120,4 +149,5 @@ class AlarmController:
             reason=self._reason,
             sound_enabled=self._sound_enabled,
             level=self._level,
+            dismissed=self._dismissed,
         )

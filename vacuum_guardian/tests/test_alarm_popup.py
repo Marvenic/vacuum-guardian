@@ -108,3 +108,48 @@ def test_dismiss_hides_and_stops_the_pulse(popup) -> None:  # type: ignore[no-un
     widget.dismiss()
     assert not widget.isVisible()
     assert not widget._pulse.isActive()
+
+
+# -- os botoes precisam liberar a tela ------------------------------------
+#
+# Relato do chao de fabrica: "ao clicar em qualquer um dos botoes o alerta nao
+# sai da tela para permitir a operacao". O popup cobre a tela do OSAI, entao
+# manter o aviso ate a condicao cessar impedia o operador de resolver a
+# propria condicao do alarme.
+
+def test_acknowledge_removes_the_alert_from_the_screen(popup) -> None:  # type: ignore[no-untyped-def]
+    widget, acks = popup
+    _show(widget)
+    assert widget.isVisible()
+
+    widget._act(widget._on_acknowledge)
+
+    assert acks == ["ack"]           # a acao foi registrada
+    assert not widget.isVisible()    # e a tela foi liberada
+
+
+def test_silence_removes_the_alert_from_the_screen(popup) -> None:  # type: ignore[no-untyped-def]
+    widget, acks = popup
+    _show(widget)
+
+    widget._mute_button.click()
+
+    assert acks == ["silence"]
+    assert not widget.isVisible()
+
+
+@pytest.mark.parametrize("level", [AlertLevel.WARNING, AlertLevel.CRITICAL])
+def test_both_levels_can_be_dismissed(popup, level) -> None:  # type: ignore[no-untyped-def]
+    """Vale para o laranja e para o vermelho - o pedido foi explicito."""
+    widget, _ = popup
+    _show(widget, level)
+    widget._act(widget._on_acknowledge)
+    assert not widget.isVisible()
+
+
+def test_dismissing_stops_the_pulse_timer(popup) -> None:  # type: ignore[no-untyped-def]
+    """Escondido e pulsando seria trabalho inutil na thread da UI."""
+    widget, _ = popup
+    _show(widget)
+    widget._act(widget._on_silence)
+    assert not widget._pulse.isActive()

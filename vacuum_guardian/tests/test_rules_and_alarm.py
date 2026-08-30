@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 from app.alarm import AlarmController
 from app.models import (
     AlarmDecision,
@@ -111,22 +113,24 @@ def test_alarm_triggers_sound_and_popup() -> None:
     assert "Vacuum1" in status.reason
 
 
-def test_silence_stops_sound_but_popup_persists() -> None:
+def test_silence_stops_sound_and_frees_the_screen() -> None:
+    """Requisito revisado: o aviso cobre a tela do OSAI e precisa sair no clique."""
     controller, player = _controller()
     controller.update(ALARM)
     controller.silence()
     status = controller.update(ALARM)  # condicao persiste no ciclo seguinte
-    assert status.popup_should_show    # requisito: popup nao some sozinho
-    assert not player.playing          # mas o som fica mudo
+    assert not status.popup_should_show  # tela liberada para operar a maquina
+    assert status.active                 # o alarme segue ativo por dentro
+    assert not player.playing
 
 
-def test_acknowledge_logs_and_mutes() -> None:
+def test_acknowledge_logs_mutes_and_frees_the_screen() -> None:
     controller, player = _controller()
     controller.update(ALARM)
     controller.acknowledge()
     status = controller.update(ALARM)
     assert status.acknowledged
-    assert status.popup_should_show
+    assert not status.popup_should_show
     assert not player.playing
 
 
@@ -246,3 +250,100 @@ def test_no_unmute_while_level_stays_the_same() -> None:
     controller.silence()
     controller.update(WARN)
     assert not player.playing
+
+
+# -- botoes liberam a tela e a acao fica registrada ------------------------
+#
+# O popup cobre a tela do OSAI: mantido ate a condicao cessar, impedia o
+# operador de resolver a propria condicao do alarme. Agora o clique dispensa
+# o aviso - e a contrapartida e o registro, porque sem o popup na tela essa
+# linha e a unica prova de que alguem viu.
+
+class FakeActionLog:
+    def __init__(self) -> None:
+        self.rows: list[tuple[str, str, str]] = []
+
+    def record(self, when, action: str, level: str, reason: str) -> bool:  # type: ignore[no-untyped-def]
+        self.rows.append((action, level, reason))
+        return True
+
+
+def _controller_with_log() -> tuple[AlarmController, FakePlayer, FakeActionLog]:
+    player, log = FakePlayer(), FakeActionLog()
+    return AlarmController(player, Path("alarm.wav"), True, log), player, log
+
+
+def test_acknowledge_takes_the_popup_off_the_screen() -> None:
+    controller, _, _ = _controller_with_log()
+    assert controller.update(ALARM).popup_should_show
+
+    controller.acknowledge()
+    status = controller.update(ALARM)  # condicao ainda existe no ciclo seguinte
+
+    assert not status.popup_should_show  # tela liberada para operar
+    assert status.active                 # mas o alarme continua ativo por dentro
+    assert status.dismissed
+
+
+def test_silence_also_takes_the_popup_off_the_screen() -> None:
+    controller, player, _ = _controller_with_log()
+    controller.update(ALARM)
+    controller.silence()
+    status = controller.update(ALARM)
+    assert not status.popup_should_show
+    assert not player.playing
+
+
+@pytest.mark.parametrize("decision", [ALARM, WARN])
+def test_both_levels_can_be_dismissed(decision) -> None:  # type: ignore[no-untyped-def]
+    controller, _, _ = _controller_with_log()
+    controller.update(decision)
+    controller.acknowledge()
+    assert not controller.update(decision).popup_should_show
+
+
+def test_action_is_recorded_with_level_and_reason() -> None:
+    controller, _, log = _controller_with_log()
+    controller.update(ALARM)
+    controller.acknowledge()
+
+    assert len(log.rows) == 1
+    action, level, reason = log.rows[0]
+    assert action == "ACKNOWLEDGE"
+    assert level == "CRITICAL"
+    assert "Vacuum1" in reason
+
+
+def test_silence_is_recorded_as_its_own_action() -> None:
+    controller, _, log = _controller_with_log()
+    controller.update(WARN)
+    controller.silence()
+    assert log.rows[0][0] == "SILENCE"
+    assert log.rows[0][1] == "WARNING"
+
+
+def test_clicking_without_an_active_alarm_records_nothing() -> None:
+    controller, _, log = _controller_with_log()
+    controller.acknowledge()
+    assert log.rows == []
+
+
+def test_escalation_brings_a_dismissed_alert_back() -> None:
+    """Dispensou o laranja; virando vermelho, o aviso TEM de voltar."""
+    controller, _, _ = _controller_with_log()
+    controller.update(WARN)
+    controller.acknowledge()
+    assert not controller.update(WARN).popup_should_show
+
+    status = controller.update(ALARM)  # a situacao piorou
+    assert status.popup_should_show
+    assert not status.dismissed
+
+
+def test_a_new_alarm_after_clearing_shows_again() -> None:
+    """Dispensar nao pode valer para o proximo evento."""
+    controller, _, _ = _controller_with_log()
+    controller.update(ALARM)
+    controller.acknowledge()
+    controller.update(CLEAR)              # condicao cessou
+    assert controller.update(ALARM).popup_should_show

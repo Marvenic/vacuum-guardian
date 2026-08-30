@@ -18,7 +18,7 @@ from ..capture import ScreenCapture, WindowLocator
 from ..detection import DetectionService
 from ..detection.arming import IsoLineWatcher
 from ..detection.service import build_finders, build_matchers
-from ..logging import DetectionLog, OverrideLog
+from ..logging import AlarmActionLog, DetectionLog, OverrideLog
 from ..models import AlarmDecision, AppConfig, DetectionResult, PumpState, RunPhase
 from ..utils import resource_path
 from ..vision.ocr import TextReader
@@ -89,7 +89,12 @@ class MonitorEngine:
             logger.error("Alarm sound not found at {} - the system beep will be used", wav)
         else:
             logger.info("Alarm sound: {}", wav)
-        self.alarm = AlarmController(WinSoundPlayer(), wav, config.alarm_sound_enabled)
+        self.alarm = AlarmController(
+            WinSoundPlayer(),
+            wav,
+            config.alarm_sound_enabled,
+            AlarmActionLog(project_root / "logs" / "alarm_actions.csv"),
+        )
         self._detection_log = DetectionLog(project_root / "logs" / "detections.csv")
         self._override_log = OverrideLog(project_root / "logs" / "overrides.csv")
         self._last_phase = RunPhase.IDLE
