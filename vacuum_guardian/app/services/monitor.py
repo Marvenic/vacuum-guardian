@@ -100,6 +100,31 @@ class MonitorEngine:
         self._last_phase = RunPhase.IDLE
         self._last_cycle: float | None = None
         self._fps = 0.0
+        # Retangulo (em coords de TELA) de uma janela nossa que esteja
+        # cobrindo o OSAI. A UI informa; o ciclo usa para nao ler os
+        # proprios pixels do popup de alarme.
+        self._occlusion: tuple[int, int, int, int] | None = None
+
+    def set_occlusion(self, rect: tuple[int, int, int, int] | None) -> None:
+        """Informa que uma janela do proprio app cobre a tela (x, y, w, h).
+
+        Chamado pela UI ao exibir/esconder o popup de alarme. Atribuicao
+        simples de proposito: e lido pela thread de monitoramento e uma
+        leitura desatualizada por um ciclo nao causa dano.
+        """
+        self._occlusion = rect
+
+    def _iso_is_covered(self, window) -> bool:  # type: ignore[no-untyped-def]
+        """A ROI do campo Iso lines esta debaixo de uma janela nossa?"""
+        roi = self._config.iso_roi
+        if self._occlusion is None or roi is None or not roi.is_valid():
+            return False
+        # ROI e relativa ao frame capturado; converte para coords de tela.
+        offset_x, offset_y = (window.left, window.top) if window else (0, 0)
+        left, top = roi.x + offset_x, roi.y + offset_y
+        right, bottom = left + roi.width, top + roi.height
+        ox, oy, ow, oh = self._occlusion
+        return not (right <= ox or left >= ox + ow or bottom <= oy or top >= oy + oh)
 
     @property
     def config(self) -> AppConfig:
@@ -115,7 +140,7 @@ class MonitorEngine:
         self._last_cycle = now
 
         frame, window = self._capture.grab()
-        result = self._detection.detect(frame)
+        result = self._detection.detect(frame, freeze_phase=self._iso_is_covered(window))
         decision = self._rules.evaluate(result)
         alarm_status = self.alarm.update(decision)
         self._detection_log.record(result, decision)  # grava apenas transicoes

@@ -21,7 +21,7 @@ from PySide2.QtWidgets import (
 from .. import __version__
 
 _WEBSITE = "https://www.abilixdigital.com"
-_AUTHORS = "Marcos Souza &amp; Andrea Cursino"
+_AUTHORS = "Marcos Souza"
 
 
 class AboutDialog(QDialog):

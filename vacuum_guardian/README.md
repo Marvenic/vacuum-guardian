@@ -184,5 +184,5 @@ integration would only replace the source of that state (a new producer of
 
 ## Credits
 
-Created by **Marcos Souza & Andrea Cursino** - Abilix Digital
+Created by **Marcos Souza** - Abilix Digital
 <https://www.abilixdigital.com>

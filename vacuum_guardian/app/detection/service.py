@@ -129,21 +129,30 @@ class DetectionService:
         match = matcher.match(crop)
         return IndicatorReading(match.state, match.confidence)
 
-    def _update_iso(self, frame: np.ndarray) -> RunPhase:
-        """Le o campo Iso lines (ROI pequena) e atualiza a fase da largada."""
+    def _update_iso(self, frame: np.ndarray, freeze: bool = False) -> RunPhase:
+        """Le o campo Iso lines (ROI pequena) e atualiza a fase da largada.
+
+        `freeze=True` devolve a fase atual SEM ler nada. Usado quando algo
+        cobre o campo na tela - inclusive o proprio popup de alarme. Sem isso
+        o app lia os pixels do proprio aviso, via um texto diferente de
+        "CLOSE THE DOORS" e concluia que o programa tinha comecado: o alerta
+        laranja virava vermelho sozinho.
+        """
         if self._iso_watcher is None or self._iso_roi is None or not self._iso_roi.is_valid():
             return RunPhase.IDLE
+        if freeze:
+            return self._iso_watcher.phase
         crop = self._crop(frame, self._iso_roi)
         if crop is None:
             return self._iso_watcher.phase
         return self._iso_watcher.update(self._reader.read_text(crop))
 
-    def detect(self, frame: np.ndarray) -> DetectionResult:
+    def detect(self, frame: np.ndarray, freeze_phase: bool = False) -> DetectionResult:
         """Executa um ciclo completo de deteccao sobre o frame."""
         start = time.perf_counter()
 
         readings = {ind.name: self._read_indicator(frame, ind) for ind in self._indicators}
-        phase = self._update_iso(frame)
+        phase = self._update_iso(frame, freeze_phase)
 
         program_name = ""
         if self._program_roi is not None and self._program_roi.is_valid():

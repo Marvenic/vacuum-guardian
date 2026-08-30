@@ -256,6 +256,19 @@ class MainWindow(QMainWindow):
             )
         elif self._popup.isVisible():
             self._popup.dismiss()
+        # O popup cobre a tela do OSAI: avisa o motor para ele nao ler os
+        # proprios pixels do aviso como se fossem o campo Iso lines.
+        self._report_occlusion()
+
+    def _report_occlusion(self) -> None:
+        """Informa ao motor o retangulo do popup, ou None se ele saiu da tela."""
+        if self._popup.isVisible():
+            frame = self._popup.frameGeometry()
+            self._engine.set_occlusion(
+                (frame.x(), frame.y(), frame.width(), frame.height())
+            )
+        else:
+            self._engine.set_occlusion(None)
 
     def _append_log(self, line: str) -> None:
         self._log_view.appendPlainText(line)

@@ -20,7 +20,7 @@ def _text(dialog: AboutDialog) -> str:
 def test_credits_are_present(qt_app) -> None:
     text = _text(AboutDialog(QIcon()))
     assert "Marcos Souza" in text
-    assert "Andrea Cursino" in text
+    assert "Andrea Cursino" not in text  # removido a pedido
     assert "Abilix Digital" in text
     assert "www.abilixdigital.com" in text
 

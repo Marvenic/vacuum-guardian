@@ -145,7 +145,7 @@ COMMON PROBLEMS
 ---------------------------------------------------------
 ABOUT
 ---------------------------------------------------------
-Vacuum Guardian - created by Marcos Souza & Andrea Cursino
+Vacuum Guardian - created by Marcos Souza
 Abilix Digital - www.abilixdigital.com
 The same information is available in the app: Settings row ->
 "About" button, or right-click the tray icon -> About.
