@@ -45,7 +45,7 @@ def test_header_is_written_once(tmp_path: Path) -> None:
 def test_records_state_and_fields(tmp_path: Path) -> None:
     path = tmp_path / "detections.csv"
     log = DetectionLog(path)
-    assert log.record(_result(PumpState.ON, PumpState.OFF), AlarmDecision(True, ("Vacuum1",), (), level=AlertLevel.CRITICAL))
+    assert log.record(_result(PumpState.ON, PumpState.OFF), AlarmDecision(True, ("Vacuum1",), (), level=AlertLevel.WARNING))
     row = _rows(path)[1]
     assert row[0] == "2026-08-24"
     assert row[1] == "14:30:05"
@@ -70,7 +70,7 @@ def test_state_change_creates_new_row(tmp_path: Path) -> None:
     path = tmp_path / "detections.csv"
     log = DetectionLog(path)
     log.record(_result(PumpState.ON, PumpState.ON), AlarmDecision(True, (), ()))
-    log.record(_result(PumpState.ON, PumpState.OFF), AlarmDecision(True, ("Vacuum1",), (), level=AlertLevel.CRITICAL))
+    log.record(_result(PumpState.ON, PumpState.OFF), AlarmDecision(True, ("Vacuum1",), (), level=AlertLevel.WARNING))
     log.record(_result(PumpState.ON, PumpState.ON), AlarmDecision(True, (), ()))
     assert len(_rows(path)) == 4  # cabecalho + 3 transicoes
 

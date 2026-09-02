@@ -18,10 +18,10 @@ Native Windows OCR on the Iso lines field (bottom left):
         text changed after it  -> RUNNING (cutting)
 Label search + colour -> state of Vacuum 1 anywhere on screen
         v
-Rule engine:
-        DOORS   + Vacuum 1 not ON      -> WARNING   (orange: still in time)
-        RUNNING + Vacuum 1 OFF         -> CRITICAL  (red + override logged)
-        RUNNING + not verifiable       -> WARNING   (orange)
+Rule engine (one alert level - orange):
+        DOORS   + Vacuum 1 not ON      -> alert (still in time to switch on)
+        RUNNING + Vacuum 1 OFF         -> alert (+ override logged)
+        RUNNING + not verifiable       -> alert
         v
 AlarmController -> popup + looping WAV + CSV audit trail
 ```
@@ -39,7 +39,7 @@ confirmation-dialog trigger needed OCR over the whole screen.
 
 The OSAI softkey menu scrolls, so `Vacuum 1` is not always on screen. Staying
 quiet in that case would mean pretending everything is fine without having
-checked anything - so it raises the orange alert instead. Being visible is
+checked anything - so it raises the alert instead. Being visible is
 therefore part of the operating procedure. Keeping the fixed
 `Locks / Vacuum areas` panel on screen (it does not scroll) avoids it.
 
@@ -51,7 +51,7 @@ Two reading modes per indicator:
 | Fixed position | fixed ROI + ON/OFF templates | elements that never move |
 
 An `UNKNOWN`/`NOT_VISIBLE` state never reports "ON" by omission - the worst
-case is an orange alert, never silence.
+case is an alert, never silence.
 
 ## Running in development
 
@@ -135,15 +135,16 @@ On first run the app creates, next to the `.exe`: `config.json`,
 
 ## Alarm channels
 
-Two severities, deliberately different colours:
+One level, one colour, one button. There used to be a red level ("proven
+OFF") and an orange one ("could not verify"); the operator's next move was the
+same in both - go and check the vacuum - so two screens only added noise. The
+specific reason is still written in the alert body.
 
-| Level | Colour | Meaning |
-|---|---|---|
-| CRITICAL | red | `Vacuum 1` is proven OFF while the program runs |
-| WARNING | orange | `Vacuum 1` could not be verified (scrolled out of view) |
-
-If an orange alert escalates to red, the sound comes back even if the operator
-had silenced it - the situation got worse and staying muted would hide that.
+**Acknowledge** records the click in `logs/alarm_actions.csv`, stops the sound,
+frees the screen and silences the alert for 5 minutes (`SNOOZE_MINUTES` in
+`app/alarm/controller.py`). Monitoring does not stop during the snooze - the
+panel and the tray icon keep showing the real state. Turning the vacuum back on
+cancels the snooze immediately, so the next problem alerts at once.
 
 The visual alarm is always active: a large popup (about 62% x 52% of the
 screen, centred, always on top) that slowly pulses between two shades. It is
@@ -154,7 +155,7 @@ The window size is proportional to the screen; the fonts are fixed in points,
 which is a physical unit Qt already scales by monitor DPI - so the text keeps
 the same real-world size on a Full HD or a 4K panel. The sound is optional - shops are noisy and CNC PCs
 often have no speakers - and can be switched off in Settings. With sound off,
-the "Silence" button is hidden, since there is nothing to silence.
+the alert is silent but otherwise identical.
 
 The pulse is deliberately slow (~0.7 s per phase): fast flashing above 3 Hz is
 uncomfortable and a photosensitivity risk.

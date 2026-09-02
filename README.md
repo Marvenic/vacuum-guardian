@@ -33,18 +33,21 @@ O gatilho é o campo **Iso lines**, no canto inferior esquerdo da tela do OSAI �
 | Iso lines | O que o app faz |
 |---|---|
 | stand-by (código irrelevante) | silêncio |
-| `CLOSE THE DOORS` e o Vacuum 1 não está ON | alerta **laranja** — ainda dá tempo de ligar |
-| o texto muda depois do aviso, com o Vacuum 1 desligado | alerta **vermelho** — a máquina já está cortando |
-| o texto muda, mas o Vacuum 1 não pôde ser lido | alerta laranja — nunca silêncio sem ter verificado |
+| `CLOSE THE DOORS` e o Vacuum 1 não está ON | **alerta** — ainda dá tempo de ligar |
+| o texto muda depois do aviso, com o Vacuum 1 desligado | **alerta** — a máquina já está cortando |
+| o texto muda, mas o Vacuum 1 não pôde ser lido | **alerta** — nunca silêncio sem ter verificado |
 
 Toda partida feita com o vácuo desligado gera uma linha em
 `logs\overrides.csv`, com data e hora, para o gerente conferir se o aviso foi
 ignorado de propósito.
 
-O alarme é uma janela grande e pulsante, sempre em primeiro plano, que só
-desaparece quando o vácuo é religado. O som é opcional (fábrica barulhenta, PC
-sem alto-falante) e pode ser desligado nas Configurações — o aviso visual não
-depende dele.
+O alarme é uma janela laranja, grande e pulsante, sempre em primeiro plano.
+Tem **um botão**: *Acknowledge*. Ele registra a ciência do operador em
+`logs\alarm_actions.csv`, libera a tela do OSAI e **silencia o alerta por 5
+minutos** — tempo de ir até a máquina sem o aviso voltando a cada segundo. O
+monitoramento não para nesse período, e religar o vácuo encerra o silêncio na
+hora. O som é opcional (fábrica barulhenta, PC sem alto-falante) e pode ser
+desligado nas Configurações — o aviso visual não depende dele.
 
 ## Compatibilidade com o Windows
 

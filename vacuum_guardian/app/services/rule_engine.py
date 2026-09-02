@@ -6,7 +6,7 @@ Regra principal (momento critico):
     precisa estar comprovadamente ON:
 
         ON                      -> nada
-        OFF                     -> CRITICAL (vermelho)
+        OFF                     -> WARNING (laranja)
         NOT_VISIBLE / UNKNOWN   -> WARNING  (laranja)
 
     O terceiro caso e a decisao de projeto mais importante aqui: o menu do
@@ -15,7 +15,7 @@ Regra principal (momento critico):
     "nao consegui verificar" tambem alerta, so que em nivel menor.
 
 Regra secundaria (legado): nome do programa casa com trigger_programs E
-algum indicador esta OFF -> CRITICAL. Continua util para instalacoes cujos
+algum indicador esta OFF -> WARNING. Continua util para instalacoes cujos
 programas tenham nomes descritivos.
 
 Puro de proposito (sem I/O, sem estado): entrada DetectionResult, saida
@@ -87,15 +87,15 @@ class RuleEngine:
             reading = self._critical_reading(result)
             state = reading.state if reading is not None else PumpState.NOT_VISIBLE
             if state is PumpState.OFF:
-                level = AlertLevel.CRITICAL
+                level = AlertLevel.WARNING
                 reason = f"Program started with {self._critical} OFF - STOP THE MACHINE."
             elif not state.is_verifiable:
                 level = AlertLevel.WARNING
                 reason = f"Program running and {self._critical} could not be verified."
 
         # -- regra secundaria (legado) -------------------------------------
-        if monitored and offending and level is not AlertLevel.CRITICAL:
-            level = AlertLevel.CRITICAL
+        if monitored and offending and level is AlertLevel.NONE:
+            level = AlertLevel.WARNING
             reason = "OFF: " + ", ".join(offending)
 
         return AlarmDecision(

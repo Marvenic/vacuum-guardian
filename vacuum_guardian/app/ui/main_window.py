@@ -55,7 +55,6 @@ _STATE_LABELS = {
 
 
 _ACCENT_OK = "#3ddc97"       # verde-agua: tudo sob controle
-_ACCENT_ALARM = "#ff5252"    # vermelho: alarme critico
 _ACCENT_WARN = "#ffa726"     # laranja: nao foi possivel verificar
 _ACCENT_IDLE = "#9e9e9e"     # cinza: estado indefinido/sem leitura
 
@@ -104,10 +103,7 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._build_tray()
 
-        self._popup = AlarmPopup(
-            on_acknowledge=self._engine.alarm.acknowledge,
-            on_silence=self._engine.alarm.silence,
-        )
+        self._popup = AlarmPopup(on_acknowledge=self._engine.alarm.acknowledge)
 
         # Sink do loguru -> sinal Qt (conexao queued garante thread da UI).
         self.log_line.connect(self._append_log)
@@ -241,7 +237,7 @@ class MainWindow(QMainWindow):
         alarm_active = outcome.alarm.popup_should_show
         # Icone da bandeja reflete o estado sem precisar abrir o painel.
         if alarm_active:
-            accent = _ACCENT_ALARM if outcome.alarm.is_critical else _ACCENT_WARN
+            accent = _ACCENT_WARN
         elif any(not r.state.is_verifiable for r in outcome.result.indicators.values()):
             accent = _ACCENT_IDLE
         else:
@@ -252,7 +248,6 @@ class MainWindow(QMainWindow):
                 outcome.alarm.reason,
                 outcome.result.program_name,
                 outcome.alarm.sound_enabled,
-                outcome.alarm.level,
             )
         elif self._popup.isVisible():
             self._popup.dismiss()
@@ -354,8 +349,7 @@ class MainWindow(QMainWindow):
 
         config = self._config_service.load()
         self._engine = MonitorEngine(config, self._root)
-        self._popup._on_acknowledge = self._engine.alarm.acknowledge  # rebind dos botoes
-        self._popup._on_silence = self._engine.alarm.silence
+        self._popup._on_acknowledge = self._engine.alarm.acknowledge  # rebind do botao
         self._build_ui()  # a lista de indicadores pode ter mudado
         self._worker = MonitorWorker(self._engine, config.capture_interval_s)
         self._worker.cycle_done.connect(self._on_cycle)

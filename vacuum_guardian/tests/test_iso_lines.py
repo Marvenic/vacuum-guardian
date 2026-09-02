@@ -105,10 +105,10 @@ def test_doors_with_unreadable_vacuum_warns() -> None:
     assert decision.level is AlertLevel.WARNING
 
 
-def test_running_with_vacuum_off_is_critical() -> None:
+def test_running_with_vacuum_off_alerts() -> None:
     """Ignorou o aviso e cortou: vermelho."""
     decision = ENGINE.evaluate(_result(PumpState.OFF, RunPhase.RUNNING))
-    assert decision.level is AlertLevel.CRITICAL
+    assert decision.level is AlertLevel.WARNING
     assert "STOP THE MACHINE" in decision.reason
 
 

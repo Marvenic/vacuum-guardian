@@ -14,22 +14,21 @@ import pytest
 
 pytest.importorskip("PySide2")
 
-from app.models import AlertLevel  # noqa: E402
 from app.ui.alarm_popup import AlarmPopup  # noqa: E402
 
 
 @pytest.fixture()
 def popup(qt_app):  # type: ignore[no-untyped-def]
     acks: list[str] = []
-    widget = AlarmPopup(lambda: acks.append("ack"), lambda: acks.append("silence"))
+    widget = AlarmPopup(lambda: acks.append("ack"))
     widget.calls: list[str] = []  # type: ignore[attr-defined]
     widget.raise_ = lambda: widget.calls.append("raise")  # type: ignore[assignment]
     widget.activateWindow = lambda: widget.calls.append("activate")  # type: ignore[assignment]
     return widget, acks
 
 
-def _show(widget, level=AlertLevel.CRITICAL, reason="Vacuum 1 is OFF"):  # type: ignore[no-untyped-def]
-    widget.show_alarm(reason, "4986_P4.CNC", True, level)
+def _show(widget, reason="Vacuum 1 is OFF"):  # type: ignore[no-untyped-def]
+    widget.show_alarm(reason, "4986_P4.CNC", True)
 
 
 def test_first_show_brings_the_window_to_the_front(popup) -> None:  # type: ignore[no-untyped-def]
@@ -52,25 +51,25 @@ def test_repeated_cycles_do_not_steal_focus_again(popup) -> None:  # type: ignor
     assert widget.isVisible()
 
 
-def test_escalation_to_critical_does_bring_it_forward(popup) -> None:  # type: ignore[no-untyped-def]
-    """Piorar de laranja para vermelho JUSTIFICA reforcar a presenca."""
+def test_new_reason_does_not_steal_focus_either(popup) -> None:  # type: ignore[no-untyped-def]
+    """Com um nivel so, nada justifica roubar o foco depois do primeiro show."""
     widget, _ = popup
-    _show(widget, AlertLevel.WARNING, "could not verify")
+    _show(widget, "could not verify")
     widget.calls.clear()
 
-    _show(widget, AlertLevel.CRITICAL, "Vacuum 1 is OFF")
-    assert widget.calls == ["raise", "activate"]
+    _show(widget, "Vacuum 1 is OFF")
+    assert widget.calls == []
 
 
-def test_buttons_keep_working_across_cycles(popup) -> None:  # type: ignore[no-untyped-def]
-    """Depois de varios ciclos, Acknowledge/Silence ainda tem de agir."""
+def test_button_keeps_working_across_cycles(popup) -> None:  # type: ignore[no-untyped-def]
+    """Depois de varios ciclos, Acknowledge ainda tem de agir."""
     widget, acks = popup
     _show(widget)
     for _ in range(5):
         _show(widget)
 
-    widget._mute_button.click()
-    assert acks == ["silence"]
+    widget._act(widget._on_acknowledge)
+    assert acks == ["ack"]
 
 
 def test_pulse_does_not_rebuild_the_stylesheet(popup) -> None:  # type: ignore[no-untyped-def]
@@ -128,21 +127,19 @@ def test_acknowledge_removes_the_alert_from_the_screen(popup) -> None:  # type: 
     assert not widget.isVisible()    # e a tela foi liberada
 
 
-def test_silence_removes_the_alert_from_the_screen(popup) -> None:  # type: ignore[no-untyped-def]
-    widget, acks = popup
-    _show(widget)
+def test_only_one_button_is_offered(popup) -> None:  # type: ignore[no-untyped-def]
+    """Dois botoes com o mesmo efeito pratico so faziam o operador escolher."""
+    from PySide2.QtWidgets import QPushButton
 
-    widget._mute_button.click()
-
-    assert acks == ["silence"]
-    assert not widget.isVisible()
-
-
-@pytest.mark.parametrize("level", [AlertLevel.WARNING, AlertLevel.CRITICAL])
-def test_both_levels_can_be_dismissed(popup, level) -> None:  # type: ignore[no-untyped-def]
-    """Vale para o laranja e para o vermelho - o pedido foi explicito."""
     widget, _ = popup
-    _show(widget, level)
+    labels = [b.text() for b in widget.findChildren(QPushButton)]
+    assert labels == ["Acknowledge"]
+
+
+def test_the_alert_can_always_be_dismissed(popup) -> None:  # type: ignore[no-untyped-def]
+    """O operador precisa da tela do OSAI livre para resolver a condicao."""
+    widget, _ = popup
+    _show(widget)
     widget._act(widget._on_acknowledge)
     assert not widget.isVisible()
 
@@ -151,5 +148,5 @@ def test_dismissing_stops_the_pulse_timer(popup) -> None:  # type: ignore[no-unt
     """Escondido e pulsando seria trabalho inutil na thread da UI."""
     widget, _ = popup
     _show(widget)
-    widget._act(widget._on_silence)
+    widget._act(widget._on_acknowledge)
     assert not widget._pulse.isActive()

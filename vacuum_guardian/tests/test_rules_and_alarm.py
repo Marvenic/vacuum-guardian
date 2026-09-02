@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -91,7 +91,7 @@ class FakePlayer:
 
 
 ALARM = AlarmDecision(
-    True, ("Vacuum1",), (), level=AlertLevel.CRITICAL, reason="OFF: Vacuum1"
+    True, ("Vacuum1",), (), level=AlertLevel.WARNING, reason="OFF: Vacuum1"
 )
 WARN = AlarmDecision(
     False, (), ("Vacuum1",), level=AlertLevel.WARNING,
@@ -113,31 +113,41 @@ def test_alarm_triggers_sound_and_popup() -> None:
     assert "Vacuum1" in status.reason
 
 
-def test_silence_stops_sound_and_frees_the_screen() -> None:
-    """Requisito revisado: o aviso cobre a tela do OSAI e precisa sair no clique."""
-    controller, player = _controller()
-    controller.update(ALARM)
-    controller.silence()
-    status = controller.update(ALARM)  # condicao persiste no ciclo seguinte
-    assert not status.popup_should_show  # tela liberada para operar a maquina
-    assert status.active                 # o alarme segue ativo por dentro
-    assert not player.playing
-
-
-def test_acknowledge_logs_mutes_and_frees_the_screen() -> None:
+def test_acknowledge_frees_the_screen_and_stops_the_sound() -> None:
+    """O aviso cobre a tela do OSAI e precisa sair no clique."""
     controller, player = _controller()
     controller.update(ALARM)
     controller.acknowledge()
-    status = controller.update(ALARM)
-    assert status.acknowledged
-    assert not status.popup_should_show
+    status = controller.update(ALARM)  # condicao persiste no ciclo seguinte
+    assert not status.popup_should_show  # tela liberada para operar a maquina
     assert not player.playing
+    assert status.snoozed
+
+
+def test_snooze_lasts_five_minutes_then_the_alarm_returns() -> None:
+    """O operador precisa de tempo para ir ate a maquina - e o aviso volta."""
+    controller, player = _controller()
+    start = datetime(2026, 8, 30, 10, 0, 0)
+    controller.update(ALARM, start)
+    controller.acknowledge(start)
+
+    # Durante a soneca: nada na tela, nada de som.
+    during = controller.update(ALARM, start + timedelta(minutes=4, seconds=59))
+    assert not during.popup_should_show
+    assert not player.playing
+    assert during.snoozed
+
+    # Passados os 5 minutos, a condicao ainda existe -> avisa de novo.
+    after = controller.update(ALARM, start + timedelta(minutes=5, seconds=1))
+    assert after.popup_should_show
+    assert player.playing
+    assert not after.snoozed
 
 
 def test_condition_clearing_resets_everything() -> None:
     controller, player = _controller()
     controller.update(ALARM)
-    controller.silence()
+    controller.acknowledge()
     status = controller.update(CLEAR)  # bomba religada
     assert not status.popup_should_show
     assert not player.playing
@@ -179,10 +189,10 @@ def test_sound_enabled_by_default_still_plays() -> None:
 
 # -- Momento critico: programa rodando (campo Iso lines) -------------------
 
-def test_running_with_critical_off_is_critical() -> None:
+def test_running_with_critical_off_alerts() -> None:
     """Programa rodando e Vacuum1 OFF -> vermelho."""
     decision = ENGINE.evaluate(_result(PumpState.ON, PumpState.OFF, "4986_P4.CNC", RunPhase.RUNNING))
-    assert decision.level is AlertLevel.CRITICAL
+    assert decision.level is AlertLevel.WARNING
     assert "Vacuum1" in decision.reason
 
 
@@ -218,7 +228,7 @@ def test_critical_indicator_name_matches_ignoring_spaces() -> None:
     """'Vacuum 1' no config deve casar com 'Vacuum1' lido da tela (e vice-versa)."""
     engine = RuleEngine([], critical_indicator="Vacuum 1")
     decision = engine.evaluate(_result(PumpState.ON, PumpState.OFF, "X.CNC", RunPhase.RUNNING))
-    assert decision.level is AlertLevel.CRITICAL
+    assert decision.level is AlertLevel.WARNING
 
 
 def test_missing_critical_indicator_is_warning_not_silence() -> None:
@@ -226,30 +236,6 @@ def test_missing_critical_indicator_is_warning_not_silence() -> None:
     engine = RuleEngine([], critical_indicator="Vacuum 9")
     decision = engine.evaluate(_result(PumpState.ON, PumpState.ON, "X.CNC", RunPhase.RUNNING))
     assert decision.level is AlertLevel.WARNING
-
-
-# -- Escalada laranja -> vermelho ------------------------------------------
-
-def test_escalation_from_warning_to_critical_unmutes() -> None:
-    """Silenciou o laranja; se virar vermelho, o som precisa voltar."""
-    controller, player = _controller()
-    controller.update(WARN)
-    controller.silence()
-    assert not player.playing
-
-    status = controller.update(ALARM)  # a situacao piorou
-    assert status.level is AlertLevel.CRITICAL
-    assert player.playing
-    assert not status.muted
-
-
-def test_no_unmute_while_level_stays_the_same() -> None:
-    """Silencio precisa valer enquanto a severidade nao mudar."""
-    controller, player = _controller()
-    controller.update(WARN)
-    controller.silence()
-    controller.update(WARN)
-    assert not player.playing
 
 
 # -- botoes liberam a tela e a acao fica registrada ------------------------
@@ -261,10 +247,10 @@ def test_no_unmute_while_level_stays_the_same() -> None:
 
 class FakeActionLog:
     def __init__(self) -> None:
-        self.rows: list[tuple[str, str, str]] = []
+        self.rows: list[tuple[str, str, object]] = []
 
-    def record(self, when, action: str, level: str, reason: str) -> bool:  # type: ignore[no-untyped-def]
-        self.rows.append((action, level, reason))
+    def record(self, when, action: str, reason: str, silenced_until=None) -> bool:  # type: ignore[no-untyped-def]
+        self.rows.append((action, reason, silenced_until))
         return True
 
 
@@ -281,45 +267,20 @@ def test_acknowledge_takes_the_popup_off_the_screen() -> None:
     status = controller.update(ALARM)  # condicao ainda existe no ciclo seguinte
 
     assert not status.popup_should_show  # tela liberada para operar
-    assert status.active                 # mas o alarme continua ativo por dentro
-    assert status.dismissed
+    assert status.snoozed
 
 
-def test_silence_also_takes_the_popup_off_the_screen() -> None:
-    controller, player, _ = _controller_with_log()
-    controller.update(ALARM)
-    controller.silence()
-    status = controller.update(ALARM)
-    assert not status.popup_should_show
-    assert not player.playing
-
-
-@pytest.mark.parametrize("decision", [ALARM, WARN])
-def test_both_levels_can_be_dismissed(decision) -> None:  # type: ignore[no-untyped-def]
-    controller, _, _ = _controller_with_log()
-    controller.update(decision)
-    controller.acknowledge()
-    assert not controller.update(decision).popup_should_show
-
-
-def test_action_is_recorded_with_level_and_reason() -> None:
+def test_action_is_recorded_with_reason_and_snooze_end() -> None:
     controller, _, log = _controller_with_log()
-    controller.update(ALARM)
-    controller.acknowledge()
+    start = datetime(2026, 8, 30, 10, 0, 0)
+    controller.update(ALARM, start)
+    controller.acknowledge(start)
 
     assert len(log.rows) == 1
-    action, level, reason = log.rows[0]
+    action, reason, silenced_until = log.rows[0]
     assert action == "ACKNOWLEDGE"
-    assert level == "CRITICAL"
     assert "Vacuum1" in reason
-
-
-def test_silence_is_recorded_as_its_own_action() -> None:
-    controller, _, log = _controller_with_log()
-    controller.update(WARN)
-    controller.silence()
-    assert log.rows[0][0] == "SILENCE"
-    assert log.rows[0][1] == "WARNING"
+    assert silenced_until == start + timedelta(minutes=5)
 
 
 def test_clicking_without_an_active_alarm_records_nothing() -> None:
@@ -328,16 +289,17 @@ def test_clicking_without_an_active_alarm_records_nothing() -> None:
     assert log.rows == []
 
 
-def test_escalation_brings_a_dismissed_alert_back() -> None:
-    """Dispensou o laranja; virando vermelho, o aviso TEM de voltar."""
-    controller, _, _ = _controller_with_log()
-    controller.update(WARN)
-    controller.acknowledge()
-    assert not controller.update(WARN).popup_should_show
+def test_resolving_the_condition_cancels_the_snooze() -> None:
+    """Vacuo religado: nao ha o que silenciar, e um novo alarme avisa na hora."""
+    controller, player, _ = _controller_with_log()
+    start = datetime(2026, 8, 30, 10, 0, 0)
+    controller.update(ALARM, start)
+    controller.acknowledge(start)
 
-    status = controller.update(ALARM)  # a situacao piorou
+    controller.update(CLEAR, start + timedelta(seconds=30))  # operador ligou o vacuo
+    status = controller.update(ALARM, start + timedelta(minutes=1))
     assert status.popup_should_show
-    assert not status.dismissed
+    assert player.playing
 
 
 def test_a_new_alarm_after_clearing_shows_again() -> None:

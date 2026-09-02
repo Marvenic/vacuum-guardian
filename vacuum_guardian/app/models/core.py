@@ -30,18 +30,15 @@ class PumpState(Enum):
 
 
 class AlertLevel(Enum):
-    """Severidade do alerta - define cor e texto do popup.
+    """Ha alerta ou nao.
 
-    Ordenavel de proposito (NONE < WARNING < CRITICAL) para que combinar
-    varias regras seja apenas um max().
+    Existiam dois niveis (laranja "nao verifiquei" e vermelho "esta
+    desligado"). Na pratica a acao do operador era a mesma - conferir o vacuo
+    - e duas telas diferentes so somavam ruido. Ficou um: laranja.
     """
 
     NONE = 0
-    WARNING = 1   # laranja: nao foi possivel verificar o vacuo
-    CRITICAL = 2  # vermelho: vacuo comprovadamente desligado
-
-    def __lt__(self, other: "AlertLevel") -> bool:
-        return self.value < other.value
+    WARNING = 1
 
 
 class RunPhase(Enum):
@@ -170,6 +167,11 @@ class AppConfig:
     # alto-falante. Com o som desligado, o alerta visual (popup pulsante)
     # e o unico canal - por isso ele precisa ser forte por si so.
     alarm_sound_enabled: bool = True
+    # Depois que o operador clica, o alerta fica quieto por este tempo.
+    # 20 min cobre um programa simples; um sink cutout leva 20-35 min. Sem
+    # isso o aviso reaparecia a cada troca de severidade (laranja <-> vermelho)
+    # e o operador nao conseguia trabalhar.
+    alarm_snooze_minutes: float = 20.0
 
     # -- momento critico (armar/desarmar) ---------------------------------
     # O ponto de risco e lido no campo "Iso lines" do OSAI (ver RunPhase):

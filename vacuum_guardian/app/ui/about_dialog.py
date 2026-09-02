@@ -46,14 +46,15 @@ class AboutDialog(QDialog):
             f"<h2 style='margin-bottom:2px'>Vacuum Guardian</h2>"
             f"<p style='color:{muted}; margin-top:0'>Version {__version__}</p>"
             f"<p>Vacuum monitoring for CMS Brembana / OSAI.<br>"
-            f"Watches the OSAI screen and raises an alarm when a monitored "
-            f"program runs without vacuum.</p>"
+            f"Watches the Iso lines field and alerts when a program runs "
+            f"without vacuum. Acknowledge silences it for 5 minutes.</p>"
             f"<p><b>Created by</b><br>{_AUTHORS}<br>Abilix Digital<br>"
             f"<a href='{_WEBSITE}'>www.abilixdigital.com</a></p>"
         )
         body.setTextFormat(Qt.RichText)
         body.setOpenExternalLinks(True)  # abre o site no navegador padrao
         body.setWordWrap(True)
+        body.setFixedWidth(440)
 
         content = QHBoxLayout()
         content.addWidget(logo)
@@ -67,4 +68,7 @@ class AboutDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addLayout(content)
         layout.addWidget(buttons)
-        self.setFixedWidth(480)
+        # ponytail: quem tem largura fixa e o TEXTO, nao o dialogo. Com o
+        # label livre, o sizeHint do dialogo errava a altura e cortava os
+        # creditos; fixando a largura do texto, a altura vira conta certa.
+        self.adjustSize()

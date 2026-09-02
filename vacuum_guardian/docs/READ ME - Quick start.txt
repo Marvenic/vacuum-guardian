@@ -80,7 +80,7 @@ DAY-TO-DAY USE
 ---------------------------------------------------------
 - Closing the window does NOT stop monitoring: the app stays in the
   Windows tray, next to the clock. Green icon = all good,
-  red = alarm, orange = could not verify, grey = cannot read screen.
+  orange = alert, grey = cannot read the screen.
 - To open the panel: double-click the tray icon.
 - To quit for real: right-click the tray icon -> Exit.
 - To start it together with Windows:
@@ -99,17 +99,19 @@ HOW IT DECIDES (Iso lines)
                                      time for the manager.
 
 WHEN THE ALARM FIRES
-  A large window opens in the middle of the screen and pulses so it
-  catches the eye from across the shop floor.
-    RED    "VACUUM IS OFF!"        -> stop: Vacuum 1 is off.
-    ORANGE "CANNOT VERIFY VACUUM"  -> scroll the OSAI menu so
-                                      Vacuum 1 shows, and check it.
-  "Acknowledge" = records in the log that the operator saw it.
-  "Silence"     = stops the sound. This button only appears when the
-                  alarm sound is turned on.
-  The window only disappears once the situation is resolved.
-  If an orange alert turns red, the sound comes back even if it had
-  been silenced - the situation got worse.
+  A large orange window opens in the middle of the screen and pulses
+  so it catches the eye from across the shop floor. It always says
+  CHECK THE VACUUM; the line below says exactly what is wrong (Vacuum
+  1 is off, or it could not be read on screen).
+
+  There is ONE button: "Acknowledge". Clicking it
+    - records date and time in logs\alarm_actions.csv,
+    - stops the sound and clears the window off the OSAI screen,
+    - silences the alert for the next 5 MINUTES, so you have time to
+      walk to the machine without it popping up again.
+  Monitoring does not stop during those 5 minutes - the panel and the
+  tray icon keep showing the real state. Turning Vacuum 1 back on ends
+  the silence right away, so the next problem alerts immediately.
 
 SOUND IS OPTIONAL
   Shops are noisy and many CNC PCs have no speakers, so the alarm

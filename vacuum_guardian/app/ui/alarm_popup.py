@@ -3,21 +3,21 @@
 O popup nao decide nada: MainWindow o mostra/esconde conforme AlarmStatus, e
 os botoes repassam a intencao do operador ao AlarmController.
 
-POR QUE OS BOTOES FECHAM O AVISO: ele cobre a tela do OSAI. Mantendo-o ali
+POR QUE O BOTAO FECHA O AVISO: ele cobre a tela do OSAI. Mantendo-o ali
 ate a condicao cessar, o operador ficava impedido de mexer na maquina para
 RESOLVER a propria condicao do alarme - o aviso virava o obstaculo. Agora
-Acknowledge e Silence tiram o aviso da frente e a acao vai para
+Acknowledge tira o aviso da frente e a acao vai para
 logs/alarm_actions.csv: sem o popup na tela, esse registro e a unica prova de
-que alguem viu. O alarme segue ativo por dentro (bandeja e painel continuam
-sinalizando) e o aviso VOLTA se a severidade piorar de laranja para vermelho.
+que alguem viu. Depois do clique o alarme fica silenciado por 5 minutos; o
+painel e o icone da bandeja continuam mostrando o estado real nesse periodo.
 
-DOIS NIVEIS, cores diferentes (requisito do chao de fabrica):
-- VERMELHO (CRITICAL): o vacuo esta comprovadamente OFF com o programa
-  rodando. Perigo imediato - a pedra pode se soltar.
-- LARANJA (WARNING): o indicador nao esta visivel na tela (o menu do OSAI
-  rola), entao NAO foi possivel verificar. Nao e a mesma coisa que "esta
-  desligado", e por isso nao usa a mesma cor - mas tambem nao pode ficar
-  em silencio, porque ninguem conferiu o vacuo.
+UM NIVEL SO (laranja). Antes havia vermelho ("esta desligado") e laranja
+("nao consegui verificar"); a acao do operador era a mesma nos dois casos -
+ir conferir o vacuo -, entao duas telas so somavam ruido. O motivo especifico
+continua escrito no corpo do aviso.
+
+UM BOTAO SO: Acknowledge. Ele registra, cala o som e silencia por 5 minutos -
+tempo de ir ate a maquina sem o aviso voltando a cada segundo.
 
 Por que o fundo PULSA: o som e opcional (fabrica barulhenta, PC da CNC muitas
 vezes sem alto-falante). Sem audio, um retangulo estatico se perde na visao
@@ -37,17 +37,9 @@ from PySide2.QtCore import Qt, QTimer
 from PySide2.QtGui import QColor, QCloseEvent, QFont, QGuiApplication, QPalette
 from PySide2.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
-from ..models import AlertLevel
-
-# Paletas por severidade: (tom claro, tom escuro, cor do texto dos botoes).
-_PALETTE = {
-    AlertLevel.CRITICAL: ("#d10023", "#7a0016", "#b00020"),
-    AlertLevel.WARNING: ("#e07000", "#8a4500", "#8a4500"),
-}
-_TITLES = {
-    AlertLevel.CRITICAL: "VACUUM IS OFF!",
-    AlertLevel.WARNING: "CANNOT VERIFY VACUUM",
-}
+# Laranja: o unico nivel. (tom claro, tom escuro, cor do texto do botao)
+_LIGHT, _DARK, _BUTTON_TEXT = "#e07000", "#8a4500", "#8a4500"
+_TITLE = "CHECK THE VACUUM"
 _PULSE_MS = 700
 
 # A JANELA e proporcional a tela: o alerta precisa dominar o monitor, seja
@@ -67,13 +59,11 @@ _BUTTON_PT = 17
 
 
 class AlarmPopup(QDialog):
-    def __init__(self, on_acknowledge: Callable[[], None], on_silence: Callable[[], None]) -> None:
+    def __init__(self, on_acknowledge: Callable[[], None]) -> None:
         super().__init__()
         self._locked = True  # enquanto True, o X da janela e Esc sao ignorados
-        # Publicos de proposito: MainWindow os substitui ao reconstruir o engine.
+        # Publico de proposito: MainWindow o substitui ao reconstruir o engine.
         self._on_acknowledge = on_acknowledge
-        self._on_silence = on_silence
-        self._level = AlertLevel.CRITICAL
 
         self.setWindowTitle("ALARM - VACUUM GUARDIAN")
         self.setWindowFlags(
@@ -83,7 +73,7 @@ class AlarmPopup(QDialog):
             | Qt.WindowTitleHint  # titulo sem botao de fechar
         )
 
-        self._title = QLabel(_TITLES[AlertLevel.CRITICAL])
+        self._title = QLabel(_TITLE)
         self._title.setFont(QFont("Segoe UI", _TITLE_PT, QFont.Black))
         self._title.setAlignment(Qt.AlignCenter)
         self._title.setWordWrap(True)
@@ -101,14 +91,10 @@ class AlarmPopup(QDialog):
         # antecipamos o que ele decidiria no ciclo seguinte.
         ack = QPushButton("Acknowledge")
         ack.clicked.connect(lambda: self._act(self._on_acknowledge))
-        self._mute_button = QPushButton("Silence")
-        self._mute_button.clicked.connect(lambda: self._act(self._on_silence))
 
         buttons = QHBoxLayout()
         buttons.addStretch()
         buttons.addWidget(ack)
-        buttons.addSpacing(16)
-        buttons.addWidget(self._mute_button)
         buttons.addStretch()
 
         layout = QVBoxLayout(self)
@@ -125,7 +111,7 @@ class AlarmPopup(QDialog):
         self._pulse = QTimer(self)
         self._pulse.setInterval(_PULSE_MS)
         self._pulse.timeout.connect(self._toggle_shade)
-        self._apply_level_style()
+        self._apply_button_style()
         self._apply_shade(bright=True)
 
     # -- aparencia ---------------------------------------------------------
@@ -138,22 +124,20 @@ class AlarmPopup(QDialog):
         continuo na thread da UI competia justamente com os cliques do
         operador no alarme. A paleta troca a cor sem reprocessar estilo.
         """
-        light, dark, _ = _PALETTE[self._level]
         palette = self.palette()
-        palette.setColor(QPalette.Window, QColor(light if bright else dark))
+        palette.setColor(QPalette.Window, QColor(_LIGHT if bright else _DARK))
         self.setPalette(palette)
 
-    def _apply_level_style(self) -> None:
-        """Estilos que so mudam com a severidade (raro), nao a cada pulso.
+    def _apply_button_style(self) -> None:
+        """Estilo fixo do botao - definido uma vez, nao a cada pulso.
 
         Nao define o fundo do QDialog de proposito: quem cuida disso e a
         paleta em _apply_shade. Uma folha de estilo com background-color
         venceria a paleta e mataria a pulsacao.
         """
-        _, _, button_text = _PALETTE[self._level]
         self.setStyleSheet(
             "QLabel { color: white; }"
-            f"QPushButton {{ background-color: white; color: {button_text};"
+            f"QPushButton {{ background-color: white; color: {_BUTTON_TEXT};"
             f"  font-weight: bold; padding: 18px 44px;"
             f"  border-radius: 6px; font-size: {_BUTTON_PT}pt; }}"
             "QPushButton:hover { background-color: #ffeedd; }"
@@ -188,53 +172,28 @@ class AlarmPopup(QDialog):
 
     # -- ciclo de vida -----------------------------------------------------
 
-    def show_alarm(
-        self,
-        reason: str,
-        program: str,
-        sound_enabled: bool = True,
-        level: AlertLevel = AlertLevel.CRITICAL,
-    ) -> None:
-        """Exibe (ou atualiza) o popup em primeiro plano.
+    def show_alarm(self, reason: str, program: str, sound_enabled: bool = True) -> None:
+        """Exibe (ou atualiza) o aviso em primeiro plano.
 
-        `sound_enabled=False` esconde o botao "Silence": sem som, silenciar
-        nao significa nada e so confundiria o operador.
+        `sound_enabled` nao muda mais os botoes (ha um so, que serve para os
+        dois casos); fica no parametro porque a MainWindow ja o passa e o
+        texto do botao pode voltar a depender dele.
         """
-        if level not in _PALETTE:
-            level = AlertLevel.CRITICAL
-        level_changed = level is not self._level
-        self._level = level
-
         # So mexe nos widgets se o texto realmente mudou: este metodo e
         # chamado a CADA ciclo enquanto o alarme dura.
-        detail = f"Program: {program or '?'}\n{reason}"
+        detail = "Program: {}\n{}".format(program or "?", reason)
         if detail != self._detail.text():
             self._detail.setText(detail)
-        if level_changed:
-            self._title.setText(_TITLES[level])
-            self._apply_level_style()
-        if self._mute_button.isVisible() != sound_enabled:
-            self._mute_button.setVisible(sound_enabled)
 
-        first_show = not self.isVisible()
-        if first_show:
+        if not self.isVisible():
             self._resize_to_screen()
             self.showNormal()
             self._bright = True
             self._apply_shade(bright=True)
             self._pulse.start()
-        elif level_changed:
-            # Escalada laranja -> vermelho com o popup ja aberto: repinta na
-            # hora, sem esperar o proximo ciclo da pulsacao.
-            self._bright = True
-            self._apply_shade(bright=True)
-
-        # Trazer para a frente APENAS ao aparecer ou ao piorar de severidade.
-        # Chamar raise_/activateWindow a cada ciclo (1x por segundo) roubava o
-        # foco do proprio operador: o clique nos botoes se perdia entre o
-        # press e o release, e arrastar a janela era cancelado no meio. Era o
-        # "alarme travado, nao da nem para mover" relatado na CNC.
-        if first_show or level_changed:
+            # Trazer para a frente APENAS ao aparecer. Chamar raise_ a cada
+            # ciclo roubava o foco do proprio operador: o clique no botao se
+            # perdia entre press e release. Era o "alarme travado" da CNC.
             self.raise_()
             self.activateWindow()
 

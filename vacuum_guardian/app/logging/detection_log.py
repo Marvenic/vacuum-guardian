@@ -138,12 +138,12 @@ class AlarmActionLog:
     """Registra o que o operador fez quando o alarme apareceu.
 
     Arquivo proprio porque a pergunta e especifica e frequente: "o alarme
-    tocou, alguem viu?". Uma linha por clique, com a severidade e o motivo
-    que estavam na tela naquele instante - depois de dispensado, o popup sai
-    e essa e a unica prova de que o aviso foi visto.
+    tocou, alguem viu?". Uma linha por clique, com o motivo que estava na tela
+    e ate quando o aviso ficou silenciado - depois de dispensado, o popup sai
+    e essa e a unica prova de que ele foi visto.
     """
 
-    _HEADER = ["date", "time", "action", "level", "reason"]
+    _HEADER = ["date", "time", "action", "reason", "silenced_until"]
 
     def __init__(self, path: Path) -> None:
         self._path = path
@@ -158,9 +158,18 @@ class AlarmActionLog:
         except OSError as exc:
             logger.error("Could not prepare {}: {}", self._path, exc)
 
-    def record(self, when: datetime, action: str, level: str, reason: str) -> bool:
+    def record(
+        self, when: datetime, action: str, reason: str,
+        silenced_until: datetime | None = None,
+    ) -> bool:
         """Grava uma acao do operador. Retorna True se conseguiu gravar."""
-        row = [f"{when:%Y-%m-%d}", f"{when:%H:%M:%S}", action, level, reason]
+        row = [
+            f"{when:%Y-%m-%d}",
+            f"{when:%H:%M:%S}",
+            action,
+            reason,
+            f"{silenced_until:%H:%M:%S}" if silenced_until else "",
+        ]
         try:
             with self._path.open("a", newline="", encoding="utf-8-sig") as handle:
                 csv.writer(handle, delimiter=";").writerow(row)
