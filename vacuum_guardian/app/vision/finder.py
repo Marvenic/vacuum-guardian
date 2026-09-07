@@ -1,22 +1,16 @@
-"""Leitura de um indicador que PODE MUDAR DE LUGAR na tela.
+"""Reading an indicator that CAN MOVE on screen.
 
-Por que existe: o menu "Favorite Softkey" do OSAI tem rolagem, entao a linha
-do "Vacuum 1" nao fica numa posicao fixa - as vezes nem esta visivel. Uma ROI
-fixa (TemplateMatcher) leria o toggle de OUTRA funcao apos o operador rolar a
-lista, o que seria pior que nao ler nada.
+Why it exists: the OSAI "Favorite Softkey" menu scrolls, so the "Vacuum 1" row
+is not at a fixed position - sometimes it is not on screen at all. A fixed ROI
+(TemplateMatcher) would read ANOTHER function's toggle once the operator
+scrolls the list, which is worse than reading nothing.
 
-Estrategia em dois passos:
-1. ROTULO: procura o texto "Vacuum 1" (imagem-template) em TODO o frame via
-   matchTemplate. Isso devolve onde a linha esta agora - ou revela que ela
-   nao esta na tela (score abaixo do limiar -> NOT_VISIBLE).
-2. TOGGLE: recorta o pill num deslocamento fixo A PARTIR do rotulo achado e
-   classifica ON/OFF por COR.
-
-Por que cor e nao template no toggle: os dois estados diferem por area de
-azul (ON = pill preenchido; OFF = pill branco com um circulo pequeno). Isso
-e um sinal forte e continuo, enquanto template matching entre duas imagens
-tao parecidas empata com facilidade - e um empate viraria "ON" (falso
-negativo perigoso: diria que ha vacuo quando nao ha).
+Two-step strategy:
+1. LABEL: search for the "Vacuum 1" text (a template image) across the WHOLE
+   frame with matchTemplate. That tells where the row is now - or that it left
+   the screen.
+2. TOGGLE: read the pill at the stored offset from the label, and decide ON or
+   OFF by how blue it is.
 """
 
 from __future__ import annotations
@@ -34,19 +28,19 @@ from ..models import PumpState, ToggleGeometry
 _BLUE_LOW = np.array([95, 80, 60], dtype=np.uint8)
 _BLUE_HIGH = np.array([135, 255, 255], dtype=np.uint8)
 
-# Janela da busca rapida em torno da ultima posicao conhecida do rotulo.
-# Vertical generosa: o menu do OSAI rola no eixo Y, entao algumas linhas de
-# deslocamento ainda caem dentro da janela e evitam a varredura completa.
+# Fast-search window around the label's last known position.
+# Generous vertically: the OSAI menu scrolls on Y, so a few rows of drift
+# still land inside the window and avoid the full scan.
 _MARGIN_X = 80
 _MARGIN_Y = 160
 
-# Usados apenas quando nao ha amostras ON/OFF calibradas.
+# Used only when there are no calibrated ON/OFF samples.
 _DEFAULT_MIDPOINT = 0.40
 _DEFAULT_MARGIN = 0.10
 
 
 def blue_fraction(bgr: np.ndarray) -> float:
-    """Fracao [0..1] de pixels azuis do recorte - o sinal que separa ON de OFF."""
+    """Fraction [0..1] of blue pixels in the crop - the ON/OFF signal."""
     if bgr.size == 0:
         return 0.0
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
@@ -75,10 +69,10 @@ class IndicatorFinder:
         self._label = self._load(label_path)
         self._toggle = toggle
         self._threshold = threshold
-        # Ultima posicao onde o rotulo foi visto (cache da busca rapida).
+        # Last position where the label was seen (fast-search cache).
         self._last: tuple[int, int] | None = None
-        # Limiar de cor derivado das AMOSTRAS reais da maquina: mais confiavel
-        # que um numero fixo, porque absorve o tema/contraste daquela tela.
+        # Colour threshold derived from the machine's REAL samples: more reliable
+        # than a fixed number, because it absorbs that screen's theme and contrast.
         on_sample = self._load(on_sample_path) if on_sample_path else None
         off_sample = self._load(off_sample_path) if off_sample_path else None
         if on_sample is not None and off_sample is not None:
@@ -86,8 +80,8 @@ class IndicatorFinder:
             off_blue = blue_fraction(off_sample)
             self._midpoint = (on_blue + off_blue) / 2.0
             # Zona morta proporcional a separacao entre os dois estados: se as
-            # amostras forem parecidas demais, quase tudo vira UNKNOWN (e o
-            # operador e avisado) em vez de gerar leitura errada.
+            # samples are too similar, almost everything becomes UNKNOWN (and the
+            # operator is told) instead of producing a wrong reading.
             self._margin = abs(on_blue - off_blue) * 0.15
             self._inverted = on_blue < off_blue  # tema claro/escuro invertido
             logger.info(
@@ -101,7 +95,7 @@ class IndicatorFinder:
 
     @property
     def ready(self) -> bool:
-        """Precisa do template do rotulo E da geometria do toggle."""
+        """Needs both the label template AND the toggle geometry."""
         return self._label is not None and self._toggle is not None and self._toggle.is_valid()
 
     @staticmethod
@@ -129,12 +123,12 @@ class IndicatorFinder:
         return float(score), (int(location[0]), int(location[1]))
 
     def _locate(self, frame: np.ndarray) -> tuple[int, int, float] | None:
-        """Acha o rotulo, tentando primeiro perto de onde ele estava.
+        """Finds the label, trying first near where it was.
 
         Varrer 1920x1080 custa ~120 ms POR INDICADOR, POR CICLO - o suficiente
-        para estourar o intervalo de captura no PC da CNC e deixar o app
-        arrastado depois de calibrado. Entre dois ciclos o item quase nunca sai
-        do lugar, entao a busca comeca numa janela ao redor da ultima posicao
+        enough to blow the capture interval on the CNC PC and leave the app
+        sluggish once calibrated. Between two cycles the item almost never moves,
+        so the search starts in a window around the last known position.
         (~10 ms). So quando isso falha e que varre a tela toda, o que preserva
         a tolerancia a rolagem do menu.
         """
@@ -163,14 +157,14 @@ class IndicatorFinder:
         return location[0], location[1], score
 
     def read(self, frame: np.ndarray) -> FinderResult:
-        """Procura o rotulo na tela e devolve o estado do toggle ao lado dele."""
+        """Finds the label on screen and returns the state of the toggle beside it."""
         if self._label is None or self._toggle is None:
             return FinderResult(PumpState.NOT_VISIBLE, 0.0)
 
         frame_h, frame_w = frame.shape[:2]
         found = self._locate(frame)
         if found is None:
-            # O rotulo nao esta na tela (menu rolado) - estado NAO verificavel.
+            # The label is not on screen (menu scrolled) - state NOT verifiable.
             return FinderResult(PumpState.NOT_VISIBLE, 0.0)
         located_x, located_y, score = found
 

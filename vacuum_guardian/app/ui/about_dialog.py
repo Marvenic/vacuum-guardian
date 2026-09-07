@@ -1,9 +1,9 @@
-"""Tela "About": identidade, versao e autoria do aplicativo.
+"""About screen: identity, version and authorship.
 
-A versao vem de app.__version__ (fonte unica) para nao existir numero
-duplicado entre codigo, instalador e tela sobre.
+The version comes from app.__version__ (single source) so there is no
+duplicated number between code, installer and this screen.
 
-Todo texto visivel ao operador esta em ingles (idioma de operacao da fabrica).
+All operator-facing text is in English (the language of the shop floor).
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ _AUTHORS = "Marcos Souza"
 
 
 class AboutDialog(QDialog):
-    """Dialogo modal com creditos; nao contem logica de negocio."""
+    """Modal credits dialog; holds no business logic."""
 
     def __init__(self, icon: QIcon) -> None:
         super().__init__()
@@ -36,23 +36,25 @@ class AboutDialog(QDialog):
         logo.setPixmap(icon.pixmap(96, 96))
         logo.setAlignment(Qt.AlignTop)
 
-        # Cor secundaria tirada da paleta do sistema (e nao fixa em #666):
-        # assim a linha da versao continua legivel em tema claro e escuro.
+        # Secondary colour taken from the system palette (not hardcoded #666):
+        # that keeps the version line readable in both light and dark themes.
         muted = self.palette().color(QPalette.PlaceholderText).name()
 
-        # Um unico rich-text: mais simples de manter que varios QLabel e
-        # permite o link clicavel do site.
+        # A single rich-text block: simpler to maintain than several QLabels and
+        # it gives us the clickable website link.
         body = QLabel(
             f"<h2 style='margin-bottom:2px'>Vacuum Guardian</h2>"
             f"<p style='color:{muted}; margin-top:0'>Version {__version__}</p>"
             f"<p>Vacuum monitoring for CMS Brembana / OSAI.<br>"
             f"Watches the Iso lines field and alerts when a program runs "
             f"without vacuum. Acknowledge silences it for 5 minutes.</p>"
+            f"<p style='color:{muted}'>Free to use. Optional anonymous usage "
+            f"reporting - tray icon, Usage data.</p>"
             f"<p><b>Created by</b><br>{_AUTHORS}<br>Abilix Digital<br>"
             f"<a href='{_WEBSITE}'>www.abilixdigital.com</a></p>"
         )
         body.setTextFormat(Qt.RichText)
-        body.setOpenExternalLinks(True)  # abre o site no navegador padrao
+        body.setOpenExternalLinks(True)  # opens the site in the default browser
         body.setWordWrap(True)
         body.setFixedWidth(440)
 
@@ -68,7 +70,7 @@ class AboutDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addLayout(content)
         layout.addWidget(buttons)
-        # ponytail: quem tem largura fixa e o TEXTO, nao o dialogo. Com o
-        # label livre, o sizeHint do dialogo errava a altura e cortava os
-        # creditos; fixando a largura do texto, a altura vira conta certa.
+        # ponytail: the TEXT carries the fixed width, not the dialog. With the
+        # label free, the dialog's sizeHint got the height wrong and clipped the
+        # credits; fixing the text width makes the height a simple sum.
         self.adjustSize()

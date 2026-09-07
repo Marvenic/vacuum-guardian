@@ -1,17 +1,17 @@
-"""Detecta a largada de um programa lendo o campo "Iso lines" do OSAI.
+"""Detects a program starting by reading the OSAI "Iso lines" field.
 
-Contexto de chao de fabrica: todos os programas se chamam <numero>.CNC, entao
-o nome nao diz se aquele trabalho ja comecou. Quem conta isso e o campo
-"Iso lines" (canto inferior esquerdo), que o proprio OSAI atualiza conforme a
-execucao.
+Shop-floor context: every program is named <number>.CNC, so the name says
+nothing about whether the job has started. The "Iso lines" field (bottom
+left) does: OSAI itself updates it as the program runs.
 
-    stand-by  -> codigo irrelevante
-    carregou  -> "CLOSE THE DOORS"      -> hora de conferir o vacuo
-    iniciou   -> o texto muda           -> a pedra pode se mover
 
-A versao anterior armava pelas janelas MATERIAL THICKNESS / EXCEEDING
-MATERIAL. Foi removida: o campo Iso lines cobre o mesmo momento com leitura
-mais confiavel, e sem precisar de OCR na tela inteira.
+    stand-by -> irrelevant code
+    loaded   -> "CLOSE THE DOORS"  -> time to check the vacuum
+    started  -> the text changes   -> the stone can move
+
+The previous version armed on the MATERIAL THICKNESS / EXCEEDING MATERIAL
+dialogs. That was removed: the Iso lines field covers the same moment more
+reliably, and without OCR over the whole screen.
 """
 
 from __future__ import annotations
@@ -22,24 +22,24 @@ from ..models import RunPhase
 
 
 class IsoLineWatcher:
-    """Le o campo "Iso lines" e diz em que fase da largada o operador esta.
+    """Reads the "Iso lines" field and reports the phase of the start.
 
-    Mais confiavel que o nome do programa (todos sao <numero>.CNC) e mais
-    direto que as janelas de confirmacao: o proprio OSAI escreve CLOSE THE
-    DOORS ali antes de liberar o corte.
+    More reliable than the program name (all are <number>.CNC) and more direct
+    than the confirmation dialogs: OSAI itself writes CLOSE THE DOORS there
+    before releasing the cut.
 
-        stand-by  -> texto qualquer, sem relevancia          -> IDLE
-        carregou  -> "CLOSE THE DOORS"                       -> DOORS
-        iniciou   -> o texto muda (viraram linhas de codigo) -> RUNNING
+        stand-by -> any text, not relevant                 -> IDLE
+        loaded   -> "CLOSE THE DOORS"                      -> DOORS
+        started  -> the text changes (code lines appear)   -> RUNNING
 
-    Sair de DOORS direto para RUNNING e a evidencia de que o operador seguiu
-    em frente: se o vacuo nao estava ligado, ele ignorou o aviso.
+    Going from DOORS straight to RUNNING is the evidence that the operator
+    carried on: if the vacuum was off, the warning was ignored.
     """
 
     def __init__(self, keyword: str = "CLOSE THE DOOR") -> None:
         self._keyword = keyword.upper()
         self._phase = RunPhase.IDLE
-        self._doors_text = ""  # texto exato visto no aviso, para detectar mudanca
+        self._doors_text = ""  # exact warning text, used to detect the change
 
     @property
     def phase(self) -> RunPhase:
@@ -51,18 +51,18 @@ class IsoLineWatcher:
             self._phase = phase
 
     def update(self, iso_text: str) -> RunPhase:
-        """Processa o texto do campo Iso lines de um ciclo."""
+        """Processes one cycle's Iso lines text."""
         text = (iso_text or "").upper().strip()
 
         if self._keyword in text:
             self._doors_text = text
             self._to(RunPhase.DOORS)
         elif self._phase is RunPhase.DOORS and text and text != self._doors_text:
-            # O aviso saiu e entrou outro conteudo: o programa comecou.
+            # The warning went away and other content took its place: it started.
             self._to(RunPhase.RUNNING)
         elif self._phase is RunPhase.RUNNING and not text:
-            # ponytail: tela vazia = voltou ao stand-by. Sem sinal explicito de
-            # "terminou", so o campo esvaziar encerra o ciclo.
+            # ponytail: an empty field means back to stand-by. With no explicit
+            # "finished" signal, that is what ends the cycle.
             self._to(RunPhase.IDLE)
         return self._phase
 

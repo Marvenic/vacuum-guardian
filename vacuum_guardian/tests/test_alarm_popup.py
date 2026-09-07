@@ -1,11 +1,11 @@
-"""Testes de responsividade do popup de alarme.
+"""Responsiveness tests for the alarm popup.
 
-Motivados por falha real na CNC: com o alarme na tela, os botoes nao respondiam
-e a janela nao podia ser movida - o operador teve de matar o app pelo
-Gerenciador de Tarefas. Causa: show_alarm() e chamado a CADA ciclo enquanto o
-alarme dura, e chamava raise_()/activateWindow() todas as vezes. Uma vez por
-segundo o app roubava o proprio foco do operador: o clique se perdia entre o
-press e o release, e o arrasto da janela era cancelado no meio.
+Motivated by a real CNC failure: with the alarm on screen the buttons did not
+respond and the window could not be moved - the operator had to kill the app
+from Task Manager. Cause: show_alarm() is called on EVERY cycle while the
+alarm lasts, and it called raise_()/activateWindow() every time. Once a
+second the app stole focus from the operator: the click was lost between
+press and release, and dragging the window was cancelled halfway.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def test_first_show_brings_the_window_to_the_front(popup) -> None:  # type: igno
 
 
 def test_repeated_cycles_do_not_steal_focus_again(popup) -> None:  # type: ignore[no-untyped-def]
-    """O nucleo do bug: 1x por segundo o app roubava o foco de volta."""
+    """The core of the bug: once a second the app stole focus back."""
     widget, _ = popup
     _show(widget)
     widget.calls.clear()
@@ -52,7 +52,7 @@ def test_repeated_cycles_do_not_steal_focus_again(popup) -> None:  # type: ignor
 
 
 def test_new_reason_does_not_steal_focus_either(popup) -> None:  # type: ignore[no-untyped-def]
-    """Com um nivel so, nada justifica roubar o foco depois do primeiro show."""
+    """With one level, nothing justifies stealing focus after the first show."""
     widget, _ = popup
     _show(widget, "could not verify")
     widget.calls.clear()
@@ -62,7 +62,7 @@ def test_new_reason_does_not_steal_focus_either(popup) -> None:  # type: ignore[
 
 
 def test_button_keeps_working_across_cycles(popup) -> None:  # type: ignore[no-untyped-def]
-    """Depois de varios ciclos, Acknowledge ainda tem de agir."""
+    """After several cycles, Acknowledge must still act."""
     widget, acks = popup
     _show(widget)
     for _ in range(5):
@@ -73,8 +73,8 @@ def test_button_keeps_working_across_cycles(popup) -> None:  # type: ignore[no-u
 
 
 def test_pulse_does_not_rebuild_the_stylesheet(popup) -> None:  # type: ignore[no-untyped-def]
-    """A pulsacao roda a cada 700 ms; refazer a folha de estilo ali pesava
-    na thread da UI justamente durante o alarme."""
+    """The pulse runs every 700 ms; rebuilding the stylesheet there weighed
+    on the UI thread exactly during the alarm."""
     widget, _ = popup
     _show(widget)
     before = widget.styleSheet()
@@ -111,10 +111,10 @@ def test_dismiss_hides_and_stops_the_pulse(popup) -> None:  # type: ignore[no-un
 
 # -- os botoes precisam liberar a tela ------------------------------------
 #
-# Relato do chao de fabrica: "ao clicar em qualquer um dos botoes o alerta nao
-# sai da tela para permitir a operacao". O popup cobre a tela do OSAI, entao
-# manter o aviso ate a condicao cessar impedia o operador de resolver a
-# propria condicao do alarme.
+# Shop-floor report: "clicking either button does not take the alert off the
+# screen so the machine can be operated". The popup covers the OSAI screen,
+# so keeping it until the condition cleared stopped the operator from
+# resolving the very condition being alarmed.
 
 def test_acknowledge_removes_the_alert_from_the_screen(popup) -> None:  # type: ignore[no-untyped-def]
     widget, acks = popup
@@ -128,7 +128,7 @@ def test_acknowledge_removes_the_alert_from_the_screen(popup) -> None:  # type: 
 
 
 def test_only_one_button_is_offered(popup) -> None:  # type: ignore[no-untyped-def]
-    """Dois botoes com o mesmo efeito pratico so faziam o operador escolher."""
+    """Two buttons with the same practical effect only forced a choice."""
     from PySide2.QtWidgets import QPushButton
 
     widget, _ = popup
@@ -137,7 +137,7 @@ def test_only_one_button_is_offered(popup) -> None:  # type: ignore[no-untyped-d
 
 
 def test_the_alert_can_always_be_dismissed(popup) -> None:  # type: ignore[no-untyped-def]
-    """O operador precisa da tela do OSAI livre para resolver a condicao."""
+    """The operator needs the OSAI screen free to resolve the condition."""
     widget, _ = popup
     _show(widget)
     widget._act(widget._on_acknowledge)
@@ -145,7 +145,7 @@ def test_the_alert_can_always_be_dismissed(popup) -> None:  # type: ignore[no-un
 
 
 def test_dismissing_stops_the_pulse_timer(popup) -> None:  # type: ignore[no-untyped-def]
-    """Escondido e pulsando seria trabalho inutil na thread da UI."""
+    """Hidden and pulsing would be wasted work on the UI thread."""
     widget, _ = popup
     _show(widget)
     widget._act(widget._on_acknowledge)

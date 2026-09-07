@@ -1,8 +1,8 @@
-"""Testes da captura de tela.
+"""Screen capture tests.
 
-Motivados por uma falha real na CNC: durante a calibracao, esconder e reexibir
-a janela invalidou o handle GDI e a segunda captura morreu com "Could not take
-a new screenshot", travando o operador no passo da amostra OFF.
+Motivated by a real CNC failure: during calibration, hiding and reshowing the
+window invalidated the GDI handle and the second capture died with "Could not
+take a new screenshot", stranding the operator on the OFF sample step.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from app.capture.screen_capture import ScreenCapture
 
 
 class _FakeLocator:
-    """Locator que nunca acha a janela: exercita o fallback de tela inteira."""
+    """A locator that never finds the window: exercises the full-screen fallback."""
 
     def find(self):  # type: ignore[no-untyped-def]
         return None
@@ -64,7 +64,7 @@ def _reset_instances():  # type: ignore[no-untyped-def]
 
 
 def _install(monkeypatch, fail_times: int = 0) -> None:  # type: ignore[no-untyped-def]
-    """Faz o proximo mss() criado falhar `fail_times` vezes antes de funcionar."""
+    """Makes the next mss() fail `fail_times` times before working."""
     state = {"first": True}
 
     def factory():  # type: ignore[no-untyped-def]
@@ -84,7 +84,7 @@ def test_grab_returns_bgr_frame(monkeypatch) -> None:  # type: ignore[no-untyped
 
 
 def test_dead_gdi_handle_is_retried_with_a_fresh_grabber(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    """A falha que travou a calibracao na maquina: precisa se recuperar sozinha."""
+    """The failure that stalled calibration on the machine: it must self-heal."""
     _install(monkeypatch, fail_times=1)
     capture = ScreenCapture(_FakeLocator())
 
@@ -97,7 +97,7 @@ def test_dead_gdi_handle_is_retried_with_a_fresh_grabber(monkeypatch) -> None:  
 
 
 def test_persistent_failure_still_raises(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    """Duas falhas seguidas sao problema de verdade - nao mascarar."""
+    """Two failures in a row are a real problem - do not mask them."""
     monkeypatch.setattr(sc, "mss", lambda: _FakeMss(fail_times=5))
     with pytest.raises(OSError):
         ScreenCapture(_FakeLocator()).grab()
@@ -106,8 +106,8 @@ def test_persistent_failure_still_raises(monkeypatch) -> None:  # type: ignore[n
 def test_frame_is_a_copy_not_a_view_of_the_reused_buffer(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     """O mss reaproveita o buffer: uma view viraria os pixels da foto seguinte.
 
-    A calibracao guarda o frame por varios segundos enquanto o operador mexe no
-    OSAI - com uma view, a amostra ON seria gravada com pixels do momento OFF.
+    Calibration holds the frame for several seconds while the operator works on
+    the OSAI screen - with a view, the ON sample would store OFF pixels.
     """
     _install(monkeypatch)
     capture = ScreenCapture(_FakeLocator())
@@ -120,7 +120,7 @@ def test_frame_is_a_copy_not_a_view_of_the_reused_buffer(monkeypatch) -> None:  
 
 
 def test_close_allows_capturing_again(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    """close() e usado no restart do monitor; nao pode inutilizar o objeto."""
+    """close() is used when restarting the monitor; it must not break the object."""
     _install(monkeypatch)
     capture = ScreenCapture(_FakeLocator())
     capture.grab()

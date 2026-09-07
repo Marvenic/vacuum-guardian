@@ -1,12 +1,12 @@
-"""Captura de frames com mss.
+"""Frame capture with mss.
 
-mss e a opcao mais rapida em Python puro para screenshot de regiao no
-Windows (usa a API GDI diretamente). Comparado a alternativas:
-- PIL.ImageGrab: mais lento e sem controle fino de regiao/monitor;
-- pygetwindow + pyautogui: mais dependencias para o mesmo resultado.
+mss is the fastest pure-Python way to grab a screen region on Windows (it
+uses the GDI API directly). Compared with the alternatives:
+- PIL.ImageGrab: slower, with no fine control over region or monitor;
+- pygetwindow + pyautogui: more dependencies for the same result.
 
-O frame retorna como numpy array BGR (padrao OpenCV), pronto para a camada
-de visao sem conversoes extras.
+The frame comes back as a BGR numpy array (OpenCV's layout), ready for the
+vision layer with no extra conversion.
 """
 
 from __future__ import annotations
@@ -21,13 +21,13 @@ from .window_locator import WindowLocator, WindowRect
 
 
 class ScreenCapture:
-    """Captura a janela do OSAI; cai para o monitor primario se nao a achar."""
+    """Captures the OSAI window; falls back to the primary monitor if absent."""
 
     def __init__(self, locator: WindowLocator) -> None:
         self._locator = locator
-        # mss usa handles GDI validos apenas na thread que os criou; como o
-        # grab() roda na thread de monitoramento (e a calibracao na thread da
-        # UI), mantemos uma instancia mss POR THREAD via threading.local.
+        # mss uses GDI handles that are only valid on the thread that created
+        # them; grab() runs on the monitoring thread (and calibration on the UI
+        # thread), so we keep one mss instance PER THREAD via threading.local.
         self._local = threading.local()
         self._warned_fallback = False
 
@@ -38,12 +38,12 @@ class ScreenCapture:
         return self._local.sct
 
     def grab(self) -> tuple[np.ndarray, WindowRect | None]:
-        """Captura um frame.
+        """Grabs one frame.
 
         Returns:
-            (frame BGR, retangulo da janela ou None se caiu no fallback
-            de tela inteira). O retangulo e devolvido para que as ROIs
-            (relativas a janela) possam ser aplicadas pelo chamador.
+            (BGR frame, window rectangle, or None when the full-screen fallback
+            was used). The rectangle is returned so the caller can apply the
+            window-relative ROIs.
         """
         window = self._locator.find()
         if window is not None:
@@ -55,34 +55,34 @@ class ScreenCapture:
             }
             self._warned_fallback = False
         else:
-            # Fallback: monitor primario inteiro. Logamos apenas uma vez
-            # para nao inundar o log enquanto o OSAI estiver fechado.
+            # Fallback: the whole primary monitor. Logged only once so the log is
+            # not flooded while OSAI is closed.
             if not self._warned_fallback:
                 logger.warning("OSAI window not found - capturing the primary monitor")
                 self._warned_fallback = True
-            region = self._sct.monitors[1]  # [0] = todos os monitores juntos
+            region = self._sct.monitors[1]  # [0] = all monitors combined
 
         shot = self._grab_region(region)
-        # np.array (e NAO asarray): o mss reaproveita o buffer interno entre
-        # capturas do mesmo tamanho. Uma view viraria os pixels da captura
-        # seguinte - e a tela de calibracao guarda o frame por varios segundos
-        # enquanto o operador mexe no OSAI.
-        # mss entrega BGRA; descartamos o canal alfa -> BGR (formato OpenCV).
-        # ascontiguousarray: alem de COPIAR (o buffer do mss e reciclado),
-        # garante memoria contigua e propria. Fatiar BGRA->BGR deixa o array
-        # com stride quebrado, e o OpenCV recebendo uma view nao-contigua
-        # sobre memoria de terceiros foi o que derrubava o processo sem
+        # np.array (NOT asarray): mss reuses its internal buffer between grabs
+        # of the same size. A view would turn into the next capture's pixels -
+        # and the calibration screen holds a frame for several seconds while the
+        # operator works on the OSAI screen.
+        # mss delivers BGRA; the alpha channel is dropped -> BGR (OpenCV).
+        # ascontiguousarray: besides COPYING (mss recycles its buffer), it
+        # guarantees contiguous memory we own. Slicing BGRA->BGR leaves the array
+        # with a broken stride, and OpenCV receiving a non-contiguous view over
+        # somebody else's memory was what crashed the process with no
         # traceback ("VacuumGuardian.exe has stopped working").
         frame = np.ascontiguousarray(np.array(shot, dtype=np.uint8)[:, :, :3])
         return frame, window
 
     def _grab_region(self, region):  # type: ignore[no-untyped-def]
-        """Captura a regiao, recriando o grabber se o handle GDI morreu.
+        """Grabs the region, recreating the grabber if the GDI handle died.
 
-        Handles GDI do Windows sao invalidados por eventos comuns - esconder e
+        Windows GDI handles are invalidated by ordinary events: hiding and
         reexibir uma janela (o que a calibracao faz a cada amostra), trocar de
-        sessao, mudar DPI. Sem esta segunda tentativa, uma falha passageira
-        deixava a calibracao presa em "Could not take a new screenshot".
+        session, changing DPI. Without this second attempt, a transient failure
+        left calibration stuck on "Could not take a new screenshot".
         """
         try:
             return self._sct.grab(region)
@@ -92,12 +92,12 @@ class ScreenCapture:
             return self._sct.grab(region)
 
     def _reset(self) -> None:
-        """Descarta o grabber desta thread; o proximo acesso cria um novo."""
+        """Drops this thread's grabber; the next access creates a new one."""
         sct = getattr(self._local, "sct", None)
         if sct is not None:
             try:
                 sct.close()
-            except Exception:  # ja pode estar invalido - fechar e best effort
+            except Exception:  # may already be invalid - closing is best effort
                 pass
             del self._local.sct
 

@@ -1,32 +1,32 @@
-"""Popup de alarme: sempre no topo, ate o operador agir.
+"""Alarm popup: always on top, until the operator acts.
 
-O popup nao decide nada: MainWindow o mostra/esconde conforme AlarmStatus, e
-os botoes repassam a intencao do operador ao AlarmController.
+The popup decides nothing: MainWindow shows and hides it from AlarmStatus,
+and the button forwards the operator's intent to the AlarmController.
 
-POR QUE O BOTAO FECHA O AVISO: ele cobre a tela do OSAI. Mantendo-o ali
-ate a condicao cessar, o operador ficava impedido de mexer na maquina para
-RESOLVER a propria condicao do alarme - o aviso virava o obstaculo. Agora
-Acknowledge tira o aviso da frente e a acao vai para
-logs/alarm_actions.csv: sem o popup na tela, esse registro e a unica prova de
-que alguem viu. Depois do clique o alarme fica silenciado por 5 minutos; o
-painel e o icone da bandeja continuam mostrando o estado real nesse periodo.
+WHY THE BUTTON CLOSES THE WARNING: it covers the OSAI screen. Keeping it
+there until the condition cleared stopped the operator from touching the
+machine to FIX the very condition being alarmed - the warning became the
+obstacle. Acknowledge now clears it and the action is written to
+logs/alarm_actions.csv: with no popup on screen, that record is the only
+proof anyone saw it. After the click the alarm is snoozed for 5 minutes;
+the panel and tray icon keep showing the real state during that time.
 
-UM NIVEL SO (laranja). Antes havia vermelho ("esta desligado") e laranja
-("nao consegui verificar"); a acao do operador era a mesma nos dois casos -
-ir conferir o vacuo -, entao duas telas so somavam ruido. O motivo especifico
-continua escrito no corpo do aviso.
+ONE LEVEL ONLY (orange). There used to be red ("it is off") and orange
+("could not verify"); the operator's next move was the same either way -
+go and check the vacuum - so two screens only added noise. The specific
+reason is still written in the body of the warning.
 
-UM BOTAO SO: Acknowledge. Ele registra, cala o som e silencia por 5 minutos -
-tempo de ir ate a maquina sem o aviso voltando a cada segundo.
+ONE BUTTON: Acknowledge. It records, mutes and snoozes for 5 minutes -
+time enough to reach the machine without the warning coming straight back.
 
-Por que o fundo PULSA: o som e opcional (fabrica barulhenta, PC da CNC muitas
-vezes sem alto-falante). Sem audio, um retangulo estatico se perde na visao
-periferica de quem esta olhando para a peca; a alternancia de tom a cada
-~700 ms e captada pela visao periferica e devolve a atencao a tela.
-O piscar e lento de proposito - piscadas rapidas (>3 Hz) sao desconfortaveis
-e podem ser um gatilho fotossensivel.
+Why the background PULSES: sound is optional (noisy shop, CNC PCs often
+have no speakers). With no audio a static rectangle is lost in the
+peripheral vision of someone looking at the workpiece; a shade change
+every ~700 ms is caught peripherally and pulls attention back.
+The blink is slow on purpose - fast flashing (>3 Hz) is uncomfortable and
+can be a photosensitivity trigger.
 
-Todo texto visivel ao operador esta em ingles (idioma de operacao da fabrica).
+All operator-facing text is in English (the language of the shop floor).
 """
 
 from __future__ import annotations
@@ -37,22 +37,22 @@ from PySide2.QtCore import Qt, QTimer
 from PySide2.QtGui import QColor, QCloseEvent, QFont, QGuiApplication, QPalette
 from PySide2.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
-# Laranja: o unico nivel. (tom claro, tom escuro, cor do texto do botao)
+# Orange: the only level. (light shade, dark shade, button text colour)
 _LIGHT, _DARK, _BUTTON_TEXT = "#e07000", "#8a4500", "#8a4500"
 _TITLE = "CHECK THE VACUUM"
 _PULSE_MS = 700
 
-# A JANELA e proporcional a tela: o alerta precisa dominar o monitor, seja
-# Full HD ou 4K. Nao e tela cheia de proposito - o operador ainda ve o OSAI
-# atras e entende o contexto do alarme.
+# The WINDOW is proportional to the screen: the alert must dominate the
+# monitor, Full HD or 4K. Not full screen on purpose - the operator still
+# sees the OSAI screen behind it and keeps the context.
 _SCREEN_FRACTION_W = 0.62
 _SCREEN_FRACTION_H = 0.52
 _MIN_W, _MIN_H = 900, 540
 
-# Ja as FONTES sao fixas em pontos. Ponto tipografico e unidade fisica
-# (1/72 pol) e o Qt ja o converte conforme o DPI do monitor: 44pt tem o mesmo
-# tamanho fisico em Full HD e em 4K. Escalar pt por pixels contaria a escala
-# duas vezes e encolheria o texto em telas de alto DPI.
+# FONTS, on the other hand, are fixed in points. A point is a physical
+# unit (1/72 in) and Qt already scales it by monitor DPI: 44pt is the same
+# physical size on Full HD and on 4K. Scaling points by pixels would count
+# the scaling twice and shrink the text on high-DPI screens.
 _TITLE_PT = 44
 _DETAIL_PT = 22
 _BUTTON_PT = 17
@@ -70,7 +70,7 @@ class AlarmPopup(QDialog):
             Qt.Dialog
             | Qt.WindowStaysOnTopHint
             | Qt.CustomizeWindowHint
-            | Qt.WindowTitleHint  # titulo sem botao de fechar
+            | Qt.WindowTitleHint  # title bar without a close button
         )
 
         self._title = QLabel(_TITLE)
@@ -83,12 +83,12 @@ class AlarmPopup(QDialog):
         self._detail.setAlignment(Qt.AlignCenter)
         self._detail.setWordWrap(True)
 
-        # Lambdas resolvem o atributo NO CLIQUE - permite a MainWindow trocar
-        # os callbacks quando o engine e reconstruido (recalibracao).
-        # O clique fecha o aviso IMEDIATAMENTE, sem esperar o proximo ciclo
-        # (ate 1 s de espera passa a sensacao de botao morto - foi o relato).
-        # Quem manda no estado continua sendo o AlarmController; aqui so
-        # antecipamos o que ele decidiria no ciclo seguinte.
+        # The lambda resolves the attribute AT CLICK TIME, so MainWindow can swap
+        # the callback when the engine is rebuilt (recalibration).
+        # The click closes the warning IMMEDIATELY, without waiting for the next
+        # cycle (up to 1 s of delay feels like a dead button - that was the report).
+        # The AlarmController still owns the state; this only anticipates what it
+        # would decide on the following cycle.
         ack = QPushButton("Acknowledge")
         ack.clicked.connect(lambda: self._act(self._on_acknowledge))
 
@@ -105,8 +105,8 @@ class AlarmPopup(QDialog):
         layout.addSpacing(24)
         layout.addLayout(buttons)
 
-        # Pulsacao do fundo: so roda enquanto o popup esta visivel.
-        self.setAutoFillBackground(True)  # necessario para a paleta pintar o fundo
+        # Background pulse: runs only while the popup is visible.
+        self.setAutoFillBackground(True)  # needed for the palette to paint it
         self._bright = True
         self._pulse = QTimer(self)
         self._pulse.setInterval(_PULSE_MS)
@@ -117,23 +117,23 @@ class AlarmPopup(QDialog):
     # -- aparencia ---------------------------------------------------------
 
     def _apply_shade(self, bright: bool) -> None:
-        """Troca so a cor de fundo - roda a cada 700 ms, tem de ser barato.
+        """Swaps the background colour only - runs every 700 ms, must be cheap.
 
-        Antes isto chamava setStyleSheet(), que re-polia a arvore inteira de
-        widgets duas vezes por segundo. Numa CNC modesta, esse trabalho
-        continuo na thread da UI competia justamente com os cliques do
-        operador no alarme. A paleta troca a cor sem reprocessar estilo.
+        This used to call setStyleSheet(), which re-polished the whole widget
+        tree twice a second. On a modest CNC PC that constant work on the UI
+        thread competed with the very clicks the operator was making on the
+        alarm. The palette changes colour without reprocessing any style.
         """
         palette = self.palette()
         palette.setColor(QPalette.Window, QColor(_LIGHT if bright else _DARK))
         self.setPalette(palette)
 
     def _apply_button_style(self) -> None:
-        """Estilo fixo do botao - definido uma vez, nao a cada pulso.
+        """Fixed button style - set once, not on every pulse.
 
-        Nao define o fundo do QDialog de proposito: quem cuida disso e a
-        paleta em _apply_shade. Uma folha de estilo com background-color
-        venceria a paleta e mataria a pulsacao.
+        It deliberately does not set the QDialog background: that belongs to
+        the palette in _apply_shade. A stylesheet with background-color would
+        beat the palette and kill the pulse.
         """
         self.setStyleSheet(
             "QLabel { color: white; }"
@@ -144,10 +144,10 @@ class AlarmPopup(QDialog):
         )
 
     def _resize_to_screen(self) -> None:
-        """Dimensiona e centraliza o popup conforme a tela onde ele vai aparecer.
+        """Sizes and centres the popup for the screen it will appear on.
 
-        Recalculado a cada exibicao: o operador pode ter mudado a resolucao ou
-        o app pode ter migrado de monitor.
+        Recomputed on every show: the operator may have changed resolution, or
+        the app may have moved to another monitor.
         """
         screen = QGuiApplication.primaryScreen()
         available = screen.availableGeometry() if screen else None
@@ -156,7 +156,7 @@ class AlarmPopup(QDialog):
         else:
             width = max(_MIN_W, int(available.width() * _SCREEN_FRACTION_W))
             height = max(_MIN_H, int(available.height() * _SCREEN_FRACTION_H))
-            # Nunca maior que a area util (protege telas pequenas).
+            # Never larger than the available area (protects small screens).
             width = min(width, available.width())
             height = min(height, available.height())
 
@@ -173,14 +173,14 @@ class AlarmPopup(QDialog):
     # -- ciclo de vida -----------------------------------------------------
 
     def show_alarm(self, reason: str, program: str, sound_enabled: bool = True) -> None:
-        """Exibe (ou atualiza) o aviso em primeiro plano.
+        """Shows (or updates) the warning in the foreground.
 
-        `sound_enabled` nao muda mais os botoes (ha um so, que serve para os
-        dois casos); fica no parametro porque a MainWindow ja o passa e o
-        texto do botao pode voltar a depender dele.
+        `sound_enabled` no longer changes the buttons (there is only one, and it
+        serves both cases); it stays as a parameter because MainWindow already
+        passes it and the button text may depend on it again.
         """
-        # So mexe nos widgets se o texto realmente mudou: este metodo e
-        # chamado a CADA ciclo enquanto o alarme dura.
+        # Only touch the widgets if the text actually changed: this method is
+        # called on EVERY cycle while the alarm lasts.
         detail = "Program: {}\n{}".format(program or "?", reason)
         if detail != self._detail.text():
             self._detail.setText(detail)
@@ -191,29 +191,29 @@ class AlarmPopup(QDialog):
             self._bright = True
             self._apply_shade(bright=True)
             self._pulse.start()
-            # Trazer para a frente APENAS ao aparecer. Chamar raise_ a cada
-            # ciclo roubava o foco do proprio operador: o clique no botao se
-            # perdia entre press e release. Era o "alarme travado" da CNC.
+            # Raise to the front ONLY when appearing. Calling raise_ on every cycle
+            # stole focus from the operator: the click on the button was lost
+            # between press and release. That was the "frozen alarm" on the CNC.
             self.raise_()
             self.activateWindow()
 
     def _act(self, callback) -> None:  # type: ignore[no-untyped-def]
-        """Repassa a intencao ao controlador e tira o aviso da frente.
+        """Forwards the intent to the controller and clears the warning.
 
-        O popup cobre a tela do OSAI: enquanto ele estiver ali o operador nao
-        consegue mexer na maquina para resolver a propria condicao do alarme.
+        The popup covers the OSAI screen: while it is there the operator cannot
+        touch the machine to resolve the very condition being alarmed.
         """
         callback()
         self.dismiss()
 
     def dismiss(self) -> None:
-        """Chamado pela MainWindow quando a condicao cessa - unico caminho de saida."""
+        """Called by MainWindow when the condition clears - the only way out."""
         self._pulse.stop()
         self._locked = False
         self.hide()
         self._locked = True
 
-    # Bloqueia Alt+F4/Esc enquanto o alarme estiver ativo.
+    # Blocks Alt+F4 and Esc while the alarm is active.
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._locked:
             event.ignore()

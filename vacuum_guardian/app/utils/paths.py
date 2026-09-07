@@ -1,8 +1,8 @@
-"""Resolucao de caminhos de recursos (funciona em dev e congelado).
+"""Resource path resolution (works in development and when frozen).
 
-O PyInstaller extrai os arquivos empacotados para uma pasta temporaria
-apontada por sys._MEIPASS; ja os arquivos GRAVAVEIS (config.json, logs)
-devem ficar junto ao .exe, nao no temporario que some ao fechar.
+PyInstaller extracts bundled files to a temporary folder pointed to by
+sys._MEIPASS; WRITABLE files (config.json, logs) must instead sit beside
+the .exe, not in the temporary folder that vanishes on exit.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 def resource_path(relative: str) -> Path:
-    """Caminho de um recurso somente-leitura empacotado (assets/...)."""
+    """Path of a bundled read-only resource (assets/...)."""
     base = getattr(sys, "_MEIPASS", None)
     if base:
         return Path(base) / relative
@@ -20,7 +20,7 @@ def resource_path(relative: str) -> Path:
 
 
 def user_data_path() -> Path:
-    """Pasta gravavel: ao lado do .exe (congelado) ou raiz do projeto (dev)."""
+    """Writable folder: beside the .exe when frozen, project root in dev."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent
     return Path(__file__).resolve().parents[2]

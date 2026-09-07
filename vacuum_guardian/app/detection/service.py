@@ -5,8 +5,8 @@ Responsabilidade unica: recortar as ROIs configuradas e delegar
                                (busca por rotulo, tolerante a rolagem)
 - nome do programa          -> TextReader (OCR)
 - fase da execucao          -> TextReader (OCR) + IsoLineWatcher
-Nao conhece mss, Qt nem regras de alarme; recebe dependencias prontas
-(injecao de dependencia), o que permite testar com imagens sinteticas.
+It knows nothing about mss, Qt or alarm rules; dependencies are injected,
+which is what lets tests drive it with synthetic images.
 
 Templates por indicador seguem a convencao de nomes:
     assets/templates/<slug>_on.png        e  <slug>_off.png        (ROI fixa)
@@ -41,7 +41,7 @@ from .arming import IsoLineWatcher
 def build_matchers(
     templates_dir: Path, threshold: float, indicators: list[IndicatorConfig]
 ) -> dict[str, TemplateMatcher]:
-    """Cria um TemplateMatcher por indicador, usando a convencao <slug>_on/off.png."""
+    """One TemplateMatcher per indicator, following the <slug>_on/off.png convention."""
     return {
         ind.name: TemplateMatcher(
             on_path=templates_dir / f"{ind.slug}_on.png",
@@ -55,10 +55,10 @@ def build_matchers(
 def build_finders(
     templates_dir: Path, config: AppConfig
 ) -> dict[str, IndicatorFinder]:
-    """Cria um IndicatorFinder para cada indicador que tenha geometria de toggle.
+    """One IndicatorFinder per indicator that has a toggle geometry.
 
-    So entram os indicadores calibrados no modo "busca por rotulo"; os demais
-    continuam no modo ROI fixa.
+    Only indicators calibrated in label-search mode are included; the rest
+    stay in fixed-ROI mode.
     """
     finders: dict[str, IndicatorFinder] = {}
     for ind in config.indicators:
@@ -99,7 +99,7 @@ class DetectionService:
 
     @staticmethod
     def _crop(frame: np.ndarray, roi: Roi) -> np.ndarray | None:
-        """Recorta a ROI do frame; None se a ROI sair dos limites (janela redimensionada)."""
+        """Crops the ROI; None if it falls outside the frame (window resized)."""
         height, width = frame.shape[:2]
         if roi.x + roi.width > width or roi.y + roi.height > height:
             logger.warning(
@@ -110,14 +110,14 @@ class DetectionService:
         return frame[roi.y : roi.y + roi.height, roi.x : roi.x + roi.width]
 
     def _read_indicator(self, frame: np.ndarray, ind: IndicatorConfig) -> IndicatorReading:
-        """Le um indicador; qualquer impedimento resulta em estado nao verificavel."""
-        # Modo preferencial: busca pelo rotulo (funciona com o menu rolado).
+        """Reads one indicator; anything in the way yields an unverifiable state."""
+        # Preferred mode: label search (survives the scrolling menu).
         finder = self._finders.get(ind.name)
         if finder is not None:
             found = finder.read(frame)
             return IndicatorReading(found.state, found.confidence)
 
-        # Modo legado: ROI fixa + templates ON/OFF.
+        # Legacy mode: fixed ROI + ON/OFF templates.
         if ind.roi is None or not ind.roi.is_valid():
             return IndicatorReading(PumpState.UNKNOWN, 0.0)
         crop = self._crop(frame, ind.roi)
@@ -130,11 +130,11 @@ class DetectionService:
         return IndicatorReading(match.state, match.confidence)
 
     def _update_iso(self, frame: np.ndarray, freeze: bool = False) -> RunPhase:
-        """Le o campo Iso lines (ROI pequena) e atualiza a fase da largada.
+        """Reads the Iso lines field (a small ROI) and updates the run phase.
 
         `freeze=True` devolve a fase atual SEM ler nada. Usado quando algo
-        cobre o campo na tela - inclusive o proprio popup de alarme. Sem isso
-        o app lia os pixels do proprio aviso, via um texto diferente de
+        covers the field on screen - the alarm popup included. Without this the
+        app read its own warning's pixels, saw text other than CLOSE THE DOORS
         "CLOSE THE DOORS" e concluia que o programa tinha comecado: o alerta
         laranja virava vermelho sozinho.
         """
@@ -148,7 +148,7 @@ class DetectionService:
         return self._iso_watcher.update(self._reader.read_text(crop))
 
     def detect(self, frame: np.ndarray, freeze_phase: bool = False) -> DetectionResult:
-        """Executa um ciclo completo de deteccao sobre o frame."""
+        """Runs one full detection cycle over the frame."""
         start = time.perf_counter()
 
         readings = {ind.name: self._read_indicator(frame, ind) for ind in self._indicators}

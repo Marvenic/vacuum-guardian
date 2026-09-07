@@ -1,14 +1,14 @@
-"""Leitura do nome do programa via OCR.
+"""Reads text from the screen with OCR.
 
-Engine primaria: Windows.Media.Ocr (nativa do Windows 10/11, via pywinrt).
-Motivos da escolha, comparada as alternativas:
-- easyocr: exige PyTorch (~2.5 GB) e inicializacao lenta - exagero para ler
-  texto nitido de UI; fica como fallback plugavel se a qualidade decepcionar.
-- Tesseract: exige instalar executavel externo na maquina industrial.
-- Windows OCR: zero dependencias pesadas, rapido, offline.
+Primary engine: Windows.Media.Ocr (native to Windows 10/11, via pywinrt).
+Why, compared with the alternatives:
+- easyocr: needs PyTorch (~2.5 GB) and starts slowly - overkill for crisp
+  UI text; it stays a pluggable fallback if quality disappoints.
+- Tesseract: needs an external executable on the industrial PC.
+- Windows OCR: no heavy dependency, fast, offline.
 
-A interface TextReader permite trocar a engine sem tocar no resto do app
-(Dependency Inversion): o DetectionService recebe qualquer TextReader.
+The TextReader interface allows swapping the engine without touching the
+rest of the app: DetectionService accepts any TextReader.
 """
 
 from __future__ import annotations
@@ -21,29 +21,29 @@ import numpy as np
 from loguru import logger
 
 
-# Limites de escala do OCR (ver WindowsOcrReader._prepare).
-_UPSCALE_BELOW_WIDTH = 400  # recortes ate esta largura sao ampliados 2x
-_MAX_WIDTH = 1280           # acima disso reduz: area e o que custa caro
+# OCR scaling limits (see WindowsOcrReader._prepare).
+_UPSCALE_BELOW_WIDTH = 400  # crops up to this width are upscaled 2x
+_MAX_WIDTH = 1280           # above this, shrink: area is what costs
 
 
 class TextReader(Protocol):
-    """Contrato minimo de uma engine de OCR."""
+    """Minimum contract for an OCR engine."""
 
     def read_text(self, roi_bgr: np.ndarray) -> str:
-        """Extrai o texto de uma imagem BGR; string vazia se nada for lido."""
+        """Extracts text from a BGR image; empty string when nothing is read."""
         ...
 
 
 class WindowsOcrReader:
-    """TextReader usando a API nativa Windows.Media.Ocr."""
+    """TextReader backed by the native Windows.Media.Ocr API."""
 
     def __init__(self) -> None:
-        # Imports locais: modulos winrt so existem no Windows e so sao
-        # necessarios se esta engine for usada (facilita testes em CI).
+        # Local imports: winrt modules only exist on Windows and are only needed
+        # if this engine is used (which keeps CI tests simple).
         from winrt.windows.globalization import Language
         from winrt.windows.media.ocr import OcrEngine
 
-        # Ingles cobre a UI do OSAI; se indisponivel, usa o idioma do sistema.
+        # English covers the OSAI UI; otherwise fall back to the system language.
         engine = None
         english = Language("en-US")
         if OcrEngine.is_language_supported(english):
@@ -57,20 +57,20 @@ class WindowsOcrReader:
     def read_text(self, roi_bgr: np.ndarray) -> str:
         try:
             return asyncio.run(self._read_async(roi_bgr))
-        except Exception as exc:  # OCR nunca pode derrubar o loop de monitoramento
+        except Exception as exc:  # OCR must never break the monitoring loop
             logger.error("OCR failed: {}", exc)
             return ""
 
     @staticmethod
     def _prepare(roi_bgr: np.ndarray) -> np.ndarray:
-        """Ajusta a escala ao tamanho da entrada (custo do OCR cresce com a area).
+        """Scales the input by size (OCR cost grows with area).
 
-        - Recortes pequenos (ROI do nome do programa): upscale 2x, que melhora
-          sensivelmente o OCR em fontes pequenas de UI.
-        - Frame inteiro (busca das janelas de confirmacao): NAO ampliar. Um
-          1920x1080 ampliado vira 8 Mpx e o ciclo passa de ~1 s - mais lento
-          que o proprio intervalo de captura. O texto dessas janelas e grande,
-          entao reduzir ate _MAX_WIDTH nao atrapalha o reconhecimento.
+        - Small crops (the program-name ROI): upscale 2x, which noticeably helps
+          OCR on small UI fonts.
+        - A whole frame: do NOT upscale. A 1920x1080 image doubled becomes 8 Mpx
+          and the cycle goes past ~1 s - slower than the capture interval itself.
+          The text there is large, so shrinking to _MAX_WIDTH does not hurt
+          recognition.
         """
         width = roi_bgr.shape[1]
         if width <= _UPSCALE_BELOW_WIDTH:

@@ -1,9 +1,9 @@
-"""Janela principal (requisito 7): painel de status + logs + acoes.
+"""Main window: status panel, recent logs and actions.
 
-Toda decisao vem pronta no CycleOutcome; aqui so ha renderizacao e repasse
-de cliques para o AlarmController/engine. Fechar a janela minimiza para a
-bandeja (o monitoramento continua em segundo plano); sair de verdade e pela
-opcao "Sair" da bandeja.
+Every decision arrives ready in the CycleOutcome; this file only renders and
+forwards clicks to the AlarmController and engine. Closing the window
+minimises to the tray (monitoring continues in the background); quitting for
+real is the tray's "Exit" entry.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from loguru import logger
-from PySide2.QtCore import QByteArray, Qt, Signal
+from PySide2.QtCore import QByteArray, Qt, QTimer, Signal
 from PySide2.QtGui import QCloseEvent, QFont, QIcon, QImage, QPainter, QPixmap
 from PySide2.QtSvg import QSvgRenderer
 from PySide2.QtWidgets import (
@@ -31,21 +31,23 @@ from PySide2.QtWidgets import (
 from ..config import ConfigService
 from ..models import PumpState, RunPhase
 from ..services.monitor import CycleOutcome, MonitorEngine
+from ..services.telemetry import new_install_id
 from ..utils import resource_path
 from .about_dialog import AboutDialog
 from .alarm_popup import AlarmPopup
 from .calibration_guide import CalibrationGuideDialog
 from .roi_selector import RoiSelectorDialog
 from .settings_dialog import SettingsDialog
+from .telemetry_dialog import TelemetryDialog
 from .worker import MonitorWorker
 
 _STATE_COLORS = {
     PumpState.ON: "#2e7d32",           # verde
     PumpState.OFF: "#c62828",          # vermelho
     PumpState.UNKNOWN: "#757575",      # cinza
-    PumpState.NOT_VISIBLE: "#ef6c00",  # laranja: fora da tela, nao verificavel
+    PumpState.NOT_VISIBLE: "#ef6c00",  # orange: off screen, not verifiable
 }
-# Texto amigavel: "NOT_VISIBLE" nao diz nada ao operador.
+# Friendly wording: "NOT_VISIBLE" means nothing to an operator.
 _STATE_LABELS = {
     PumpState.ON: "ON",
     PumpState.OFF: "OFF",
@@ -62,11 +64,11 @@ _icon_cache: dict[str, QIcon] = {}
 
 
 def _app_icon(accent: str) -> QIcon:
-    """Icone do escudo tingido com a cor de estado.
+    """The shield icon tinted with the state colour.
 
-    O SVG traz a cor como token {ACCENT}; aqui ele e substituido e renderizado
-    em varias resolucoes. O resultado e cacheado porque esta funcao e chamada
-    a cada ciclo de monitoramento.
+    The SVG carries the colour as an {ACCENT} token; it is substituted here and
+    rendered at several sizes. The result is cached because this function is
+    called on every monitoring cycle.
     """
     cached = _icon_cache.get(accent)
     if cached is not None:
@@ -105,13 +107,20 @@ class MainWindow(QMainWindow):
 
         self._popup = AlarmPopup(on_acknowledge=self._engine.alarm.acknowledge)
 
-        # Sink do loguru -> sinal Qt (conexao queued garante thread da UI).
+        # loguru sink -> Qt signal (a queued connection lands on the UI thread).
         self.log_line.connect(self._append_log)
         logger.add(lambda msg: self.log_line.emit(str(msg).rstrip()), level="INFO")
 
         self._worker = MonitorWorker(engine, engine.config.capture_interval_s)
         self._worker.cycle_done.connect(self._on_cycle)
         self._worker.start()
+
+        # Usage-report question: asked once, and only after the window is built
+        # (asking earlier would put a dialog over an empty screen).
+        # It only asks if there IS somewhere to send: with no telemetry_url the
+        # consent would have no effect and the question would just annoy.
+        if not engine.config.telemetry_prompted and engine.config.telemetry_url.strip():
+            QTimer.singleShot(1500, lambda: self._open_telemetry(first_run=True))
 
     # -- construcao da UI --------------------------------------------------
 
@@ -184,9 +193,12 @@ class MainWindow(QMainWindow):
         show_action.triggered.connect(self._show_from_tray)
         about_action = QAction("About", menu)
         about_action.triggered.connect(self._open_about)
+        usage_action = QAction("Usage data…", menu)
+        usage_action.triggered.connect(self._open_telemetry)
         quit_action = QAction("Exit", menu)
         quit_action.triggered.connect(self._quit)
         menu.addAction(show_action)
+        menu.addAction(usage_action)
         menu.addAction(about_action)
         menu.addSeparator()
         menu.addAction(quit_action)
@@ -202,7 +214,7 @@ class MainWindow(QMainWindow):
     # -- ciclo de monitoramento -------------------------------------------
 
     def _on_cycle(self, outcome: CycleOutcome) -> None:
-        """Renderiza um CycleOutcome (chamado via sinal, ja na thread da UI)."""
+        """Renders a CycleOutcome (called via signal, already on the UI thread)."""
         for name, reading in outcome.result.indicators.items():
             label = self._lbl_indicators.get(name)
             if label is None:
@@ -211,15 +223,15 @@ class MainWindow(QMainWindow):
             label.setStyleSheet(f"color: {_STATE_COLORS.get(reading.state, '#757575')};")
 
         self._lbl_program.setText(outcome.result.program_name or "—")
-        # Fase lida no campo Iso lines: e o unico gatilho do app.
+        # Phase read from the Iso lines field: the app's only trigger.
         phase = outcome.result.run_phase
         if phase is RunPhase.RUNNING:
             text, colour = "RUNNING - vacuum required", "#c62828"
         elif phase is RunPhase.DOORS:
             text, colour = "CLOSE THE DOORS - check vacuum", "#e07000"
         elif not getattr(self._engine, "trigger_ready", True):
-            # Sem a area Iso lines calibrada o alarme nunca dispara; dizer
-            # "stand-by" aqui daria a impressao de que esta tudo pronto.
+            # Without a calibrated Iso lines area the alarm never fires; saying
+            # "stand-by" here would suggest everything is ready.
             text, colour = "NOT CALIBRATED - alarm disabled", "#c62828"
         else:
             text, colour = "stand-by", "#757575"
@@ -235,7 +247,7 @@ class MainWindow(QMainWindow):
         self._lbl_fps.setText(f"{outcome.fps:.1f}")
 
         alarm_active = outcome.alarm.popup_should_show
-        # Icone da bandeja reflete o estado sem precisar abrir o painel.
+        # The tray icon shows the state without opening the panel.
         if alarm_active:
             accent = _ACCENT_WARN
         elif any(not r.state.is_verifiable for r in outcome.result.indicators.values()):
@@ -251,12 +263,12 @@ class MainWindow(QMainWindow):
             )
         elif self._popup.isVisible():
             self._popup.dismiss()
-        # O popup cobre a tela do OSAI: avisa o motor para ele nao ler os
-        # proprios pixels do aviso como se fossem o campo Iso lines.
+        # The popup covers the OSAI screen: tell the engine not to read the
+        # warning's own pixels as if they were the Iso lines field.
         self._report_occlusion()
 
     def _report_occlusion(self) -> None:
-        """Informa ao motor o retangulo do popup, ou None se ele saiu da tela."""
+        """Reports the popup rectangle to the engine, or None once it is gone."""
         if self._popup.isVisible():
             frame = self._popup.frameGeometry()
             self._engine.set_occlusion(
@@ -271,14 +283,14 @@ class MainWindow(QMainWindow):
     # -- acoes -------------------------------------------------------------
 
     def _open_calibration(self) -> None:
-        """Captura um frame e abre o seletor de ROI; reinicia o monitor se mudou algo."""
+        """Grabs a frame and opens the ROI selector; restarts the monitor if changed."""
         frame = self._engine.grab_frame()
         dialog = RoiSelectorDialog(
             frame,
             self._engine.config,
             self._root / "assets" / "templates",
             self._save_guide_language,
-            self._engine.grab_frame,  # permite refotografar sem fechar a janela
+            self._engine.grab_frame,  # allows re-shooting without closing the window
         )
         dialog.exec_()
         if dialog.changed:
@@ -286,7 +298,7 @@ class MainWindow(QMainWindow):
             self._restart_monitor()
 
     def _open_guide(self) -> None:
-        """Guia de calibracao avulso - para ler antes de abrir a calibracao."""
+        """Stand-alone calibration guide - to read before starting calibration."""
         CalibrationGuideDialog(
             self._engine.config,
             self._root / "assets" / "templates",
@@ -294,63 +306,80 @@ class MainWindow(QMainWindow):
         ).exec_()
 
     def _save_guide_language(self, language: str) -> None:
-        """Persiste a escolha EN/PT do operador.
+        """Persists the operator's EN/PT choice.
 
-        Grava direto, sem reiniciar o monitor: idioma do guia nao afeta
-        deteccao, e reiniciar por causa disso interromperia a vigilancia.
+        Saved directly, without restarting the monitor: the guide language does
+        not affect detection, and restarting would interrupt the watch.
         """
         self._engine.config.guide_language = language
         self._config_service.save(self._engine.config)
 
+    def _open_telemetry(self, first_run: bool = False) -> None:
+        """Usage-report consent plus the optional operator card.
+
+        Called once on first run and whenever the operator wants to change their
+        mind from the tray menu.
+        """
+        config = self._engine.config
+        if not config.install_id:
+            config.install_id = new_install_id()
+        dialog = TelemetryDialog(config, self._engine.telemetry.payload(), self)
+        if dialog.exec_():
+            self._config_service.save(config)
+        elif first_run:
+            # Closed with the X: do not ask again, and send nothing.
+            config.telemetry_prompted = True
+            self._config_service.save(config)
+
     def _open_about(self) -> None:
-        """Creditos do aplicativo; acessivel tambem pela bandeja."""
+        """Application credits; also reachable from the tray."""
         AboutDialog(_app_icon(_ACCENT_OK)).exec_()
 
     def _open_settings(self) -> None:
-        """Abre as configuracoes; salvar reinicia o monitor com os novos valores."""
+        """Opens settings; saving restarts the monitor with the new values."""
         dialog = SettingsDialog(self._engine.config)
         if dialog.exec_() and dialog.result_config is not None:
             self._config_service.save(dialog.result_config)
             self._restart_monitor()
 
     def _restart_monitor(self) -> None:
-        """Reinicia o monitor SEM travar a interface.
+        """Restarts the monitor WITHOUT freezing the interface.
 
-        A versao anterior fazia `worker.stop()` (espera bloqueante de 3 s) na
-        thread da UI. Quando um ciclo demorava mais que isso - o que acontece
-        no PC da CNC, onde o OCR varre a tela inteira - a janela congelava e,
-        pior, a thread antiga era abandonada ainda rodando: ficavam duas
-        varreduras simultaneas disputando a CPU, e cada recalibracao somava
-        mais uma.
+        The previous version called `worker.stop()` (a blocking 3 s wait) on the
+        UI thread. When a cycle took longer than that - which happens on the CNC
+        PC - the window froze and, worse, the old thread was ABANDONED while
+        still running: two scans then competed for the CPU, and every
+        recalibration added another one.
+        
 
-        Agora: pede a parada, devolve o controle a UI na hora e so monta o
-        novo motor quando a thread antiga realmente terminou.
+        Now: it asks the thread to stop, returns to the UI at once, and only
+        builds the new engine once the old thread has really finished.
         """
         if self._restarting:
-            return  # dois cliques seguidos nao podem criar dois monitores
+            return  # two quick clicks must not create two monitors
         self._restarting = True
         logger.info("Restarting monitoring with the new configuration")
 
         old_worker, old_engine = self._worker, self._engine
         old_worker.request_stop()
-        # A referencia fica guardada ate o fim: destruir uma QThread rodando
-        # aborta o processo.
+        # The reference is kept to the end: destroying a running QThread
+        # aborts the process.
         old_worker.finished.connect(lambda: self._start_monitor(old_worker, old_engine))
         if not old_worker.isRunning():
             self._start_monitor(old_worker, old_engine)
 
     def _start_monitor(self, old_worker: MonitorWorker, old_engine: MonitorEngine) -> None:
-        """Fecha o motor antigo e sobe o novo. Chamado quando a thread termina."""
+        """Closes the old engine and starts the new one, once the thread ends."""
         if not self._restarting:
-            return  # o sinal `finished` pode chegar duas vezes
+            return  # the `finished` signal can arrive twice
         self._restarting = False
-        old_engine.close()  # so agora: o motor nao esta mais em uso
+        old_engine.close()  # only now: the engine is no longer in use
         old_worker.deleteLater()
 
         config = self._config_service.load()
         self._engine = MonitorEngine(config, self._root)
-        self._popup._on_acknowledge = self._engine.alarm.acknowledge  # rebind do botao
-        self._build_ui()  # a lista de indicadores pode ter mudado
+        self._popup._on_acknowledge = self._engine.alarm.acknowledge  # rebind
+        self._build_ui()  # the indicator list may have changed
         self._worker = MonitorWorker(self._engine, config.capture_interval_s)
         self._worker.cycle_done.connect(self._on_cycle)
         self._worker.start()
@@ -371,7 +400,7 @@ class MainWindow(QMainWindow):
         QApplication.quit()
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        """Fechar = minimizar para a bandeja; o monitoramento continua (segundo plano)."""
+        """Closing minimises to the tray; monitoring continues in the background."""
         if self._quitting:
             super().closeEvent(event)
             return

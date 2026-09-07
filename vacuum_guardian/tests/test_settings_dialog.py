@@ -1,7 +1,7 @@
-"""Testes da tela de configuracoes.
+"""Tests for the settings screen.
 
-Rodam offscreen (QT_QPA_PLATFORM=offscreen definido no conftest), portanto
-nao abrem janela real nem exigem sessao grafica.
+They run offscreen (QT_QPA_PLATFORM=offscreen set in conftest), so they open
+no real window and need no graphical session.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ def test_edits_are_isolated_until_saved(qt_app) -> None:
     original = AppConfig(capture_interval_s=1.0)
     dialog = SettingsDialog(original)
     dialog._interval.setValue(2.5)
-    # Sem chamar _apply (equivalente a Cancelar), o objeto original nao muda.
+    # Without calling _apply (the Cancel path), the original object is unchanged.
     assert original.capture_interval_s == 1.0
     assert dialog.result_config is None
 
@@ -74,7 +74,7 @@ def test_sound_toggle_is_saved(qt_app) -> None:
 
 
 def test_wav_field_disabled_when_sound_is_off(qt_app) -> None:
-    """Escolher arquivo de som sem som ligado confundiria o operador."""
+    """Choosing a sound file with sound off would confuse the operator."""
     dialog = SettingsDialog(AppConfig(alarm_sound_enabled=True))
     assert dialog._wav.isEnabled()
     dialog._sound_check.setChecked(False)

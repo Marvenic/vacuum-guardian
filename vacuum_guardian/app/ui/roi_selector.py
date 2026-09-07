@@ -1,23 +1,23 @@
-"""Janela de calibracao: assistente passo a passo sobre um frame do OSAI.
+"""Calibration window: a step-by-step wizard over a frame of the OSAI screen.
 
-A versao anterior mostrava sete botoes de uma vez, em duas fileiras de modos
-diferentes ("Fixed position" e "Scroll-proof"), e nada indicava a ordem. Era
-o operador que precisava saber a sequencia - e nao sabia. Agora:
+The previous version showed seven buttons at once, in two rows of different
+modes ("Fixed position" and "Scroll-proof"), with nothing to say in which
+order. The operator had to know the sequence - and did not. Now:
 
-- o CalibrationGuide conduz: um passo por vez, com UM botao de acao;
-- esta janela apenas EXECUTA a acao pedida (recorta, mede, grava o PNG);
-- os botoes antigos continuam existindo em "Advanced", recolhidos, para os
-  casos de posicao fixa e para quem precisar refazer algo fora de ordem.
+- CalibrationGuide leads: one step at a time, with ONE action button;
+- this window only EXECUTES the requested action (crop, measure, write PNG);
+- the old buttons still exist under "Advanced", collapsed, for fixed-position
+  cases and for redoing something out of order.
 
-A outra fonte de confusao era ter de FECHAR e REABRIR a janela para capturar
-as amostras ON/OFF, porque o frame era congelado na abertura. Agora a janela
-se esconde por um instante e tira uma foto nova (`_grab_frame`), entao o
-operador liga/desliga o vacuo e captura sem sair daqui.
+The other source of confusion was having to CLOSE and REOPEN the window to
+capture the ON/OFF samples, because the frame was frozen on opening. Now the
+window steps aside for a moment and takes a fresh picture (`_grab_frame`), so
+the operator toggles the vacuum and captures without leaving.
 
-Dois modos de calibrar um indicador:
-1. BUSCA POR ROTULO (o que o assistente ensina): guarda a imagem do texto e a
-   posicao do toggle RELATIVA a ele, entao sobrevive a rolagem do menu.
-2. POSICAO FIXA (legado, em "Advanced"): ROI + templates ON/OFF.
+Two ways to calibrate an indicator:
+1. LABEL SEARCH (what the wizard teaches): stores the image of the text and
+   the toggle position RELATIVE to it, so it survives menu scrolling.
+2. FIXED POSITION (legacy, under "Advanced"): ROI + ON/OFF templates.
 """
 
 from __future__ import annotations
@@ -61,15 +61,15 @@ from .calibration_guide import (
 _PROGRAM_TARGET = "Program name"
 _ISO_TARGET = "Iso lines (area)"
 
-# Tempo que a janela fica escondida antes de fotografar a tela. Precisa ser
-# suficiente para o Windows redesenhar o que estava por baixo.
+# How long the window stays out of the way before the screenshot. Long
+# enough for Windows to repaint whatever was underneath.
 _HIDE_BEFORE_GRAB_S = 0.45
-# Espera entre as duas tentativas de captura (ver _refresh_frame).
+# Wait between the two capture attempts (see _refresh_frame).
 _RETRY_WAIT_S = 0.25
 
 
 class _FrameLabel(QLabel):
-    """QLabel com selecao por rubber-band; guarda o retangulo em coords do widget."""
+    """QLabel with rubber-band selection; keeps the rect in widget coordinates."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -78,7 +78,7 @@ class _FrameLabel(QLabel):
         self.selection: QRect | None = None
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        # Qt5: QMouseEvent.pos() (QPoint). No Qt6 seria event.position().toPoint().
+        # Qt5: QMouseEvent.pos() (QPoint). On Qt6 it would be event.position().
         self._origin = event.pos()
         self._band.setGeometry(QRect(self._origin, self._origin))
         self._band.show()
@@ -96,7 +96,7 @@ class _FrameLabel(QLabel):
 
 
 class RoiSelectorDialog(QDialog):
-    """Assistente de calibracao sobre um frame capturado do OSAI."""
+    """Calibration wizard over a captured frame of the OSAI screen."""
 
     def __init__(
         self,
@@ -111,7 +111,7 @@ class RoiSelectorDialog(QDialog):
         self._config = config
         self._templates_dir = templates_dir
         self._grab_frame = grab_frame
-        self.changed = False  # MainWindow reconstroi o engine se True
+        self.changed = False  # MainWindow rebuilds the engine when True
 
         self.setWindowTitle("Calibration - Vacuum Guardian")
 
@@ -141,8 +141,8 @@ class RoiSelectorDialog(QDialog):
         top.addWidget(refresh)
         top.addWidget(done)
 
-        # Modo legado, recolhido: presente para quem precisa, fora do caminho
-        # de quem esta apenas seguindo o assistente.
+        # Legacy mode, collapsed: there for those who need it, out of the way
+        # of anyone simply following the wizard.
         self._advanced = QWidget()
         actions = QGridLayout(self._advanced)
         actions.setContentsMargins(0, 0, 0, 0)
@@ -171,11 +171,11 @@ class RoiSelectorDialog(QDialog):
         self._guide = CalibrationGuide(
             config, templates_dir, self, on_language_changed, self._run_step
         )
-        # Ao mudar de passo, a selecao anterior nao vale mais - deixa-la na tela
-        # convidaria a capturar a area errada no passo seguinte.
+        # On a step change the previous selection is stale - leaving it on screen
+        # would invite capturing the wrong area on the next step.
         self._guide.step_changed.connect(self._label.clear_selection)
-        # O combo "Target:" acompanha o passo: o operador ve, sem precisar
-        # mexer, qual indicador esta sendo calibrado agora.
+        # The "Target:" combo follows the step, so the operator can see which
+        # indicator is being calibrated without touching anything.
         self._guide.step_changed.connect(self._follow_guide_target)
         self._follow_guide_target()
 
@@ -184,7 +184,7 @@ class RoiSelectorDialog(QDialog):
         layout.addWidget(self._guide)
         self.resize(1280, 780)
 
-    # -- infraestrutura ----------------------------------------------------
+    # -- infrastructure ----------------------------------------------------
 
     @staticmethod
     def _button(text: str, slot) -> QPushButton:  # type: ignore[no-untyped-def]
@@ -193,7 +193,7 @@ class RoiSelectorDialog(QDialog):
         return button
 
     def _follow_guide_target(self) -> None:
-        """Sincroniza o combo com o indicador do passo atual do assistente."""
+        """Keeps the combo in sync with the current wizard step's indicator."""
         guide = getattr(self, "_guide", None)
         if guide is None:
             return
@@ -207,7 +207,7 @@ class RoiSelectorDialog(QDialog):
             self._target.setCurrentIndex(index)
 
     def _show_frame(self, frame_bgr: np.ndarray) -> None:
-        """Exibe o frame escalado para caber na tela, guardando a escala usada."""
+        """Shows the frame scaled to fit, remembering the scale that was used."""
         self._frame = frame_bgr
         height, width = frame_bgr.shape[:2]
         self._scale = min(1.0, 1200 / width, 800 / height)
@@ -225,31 +225,31 @@ class RoiSelectorDialog(QDialog):
         self._label.clear_selection()
 
     def _refresh_frame(self) -> bool:
-        """Esconde a janela, fotografa a tela de novo e reaparece.
+        """Steps the window aside, takes a fresh screenshot and comes back.
 
-        Sem isso o operador precisaria fechar e reabrir a calibracao a cada
-        amostra ON/OFF - a maior fonte de confusao do fluxo anterior.
+        Without this the operator would have to close and reopen calibration for
+        every ON/OFF sample - the biggest confusion in the previous flow.
         """
         if self._grab_frame is None:
             return False
-        # MINIMIZAR, nunca hide(): esta janela roda dentro de exec_(), e
+        # MINIMISE, never hide(): this window runs inside exec_(), and hiding a
         # hide() encerra o loop modal na hora. O exec_() retornava no meio da
         # captura, o Done nunca era processado e sobrava um dialogo visivel e
-        # ainda modal - com o Qt mantendo a janela principal DESABILITADA no
-        # Windows. Era esse o "congelou e nao deixa nem fechar".
-        # Minimizar tira a janela da foto sem mexer no estado modal.
+        # with the main window left DISABLED by Windows. That was the "it froze
+        # and will not even close" report.
+        # Minimising takes the window out of the shot without touching modality.
         self.showMinimized()
         QApplication.processEvents()
         time.sleep(_HIDE_BEFORE_GRAB_S)
         frame, error = None, ""
-        # Duas tentativas: a primeira falha costuma ser um handle GDI morto
-        # (esconder/reexibir a janela invalida o contexto), e o ScreenCapture
-        # recria o grabber por baixo - a segunda entao passa.
+        # Two attempts: the first failure is usually a dead GDI handle (hiding
+        # and reshowing the window invalidates the context), and ScreenCapture
+        # recreates the grabber underneath - so the second attempt works.
         for attempt in (1, 2):
             try:
                 frame = self._grab_frame()
                 break
-            except Exception as exc:  # captura nunca pode derrubar a calibracao
+            except Exception as exc:  # capture must never break calibration
                 logger.exception("Screenshot attempt {} failed", attempt)
                 error = str(exc)
                 time.sleep(_RETRY_WAIT_S)
@@ -257,8 +257,8 @@ class RoiSelectorDialog(QDialog):
         self.raise_()
         self.activateWindow()
         if frame is None:
-            # O detalhe tecnico vai para "Show details": o operador ve uma frase
-            # acionavel, e quem for diagnosticar ainda tem a mensagem do erro.
+            # The technical detail goes to "Show details": the operator sees one
+            # actionable sentence, and a technician still gets the error text.
             box = QMessageBox(
                 QMessageBox.Warning,
                 "Calibration",
@@ -276,23 +276,23 @@ class RoiSelectorDialog(QDialog):
         self._show_frame(frame)
         return True
 
-    # -- ponte com o assistente -------------------------------------------
+    # -- bridge to the wizard ---------------------------------------------
 
     def _run_step(self, action: str, indicator: str = "") -> bool:
-        """Executa a acao do passo atual. Retorna True se capturou com sucesso.
+        """Runs the current step's action. True when the capture succeeded.
 
-        `indicator` vem do proprio passo do assistente. Antes usava-se sempre
-        o indicador critico: com dois vacuos, o operador seguia instrucoes do
-        Vacuum Pump 1 e a captura era gravada no Vacuum 1 - que e a razao de o
-        Vacuum Pump 1 continuar "sem leitura" depois de calibrado.
+        `indicator` comes from the wizard step itself. It used to always use the
+        critical indicator: with two vacuums, the operator followed instructions
+        for Vacuum Pump 1 while the capture was written to Vacuum 1 - which is
+        why Vacuum Pump 1 stayed unreadable after being calibrated.
         """
         target = indicator or self._config.critical_indicator
         if action in (REQ_LABEL, REQ_TOGGLE):
-            # Passos de desenho: o operador ja arrastou sobre a foto atual.
+            # Drawing steps: the operator has already dragged over the picture.
             self._select_target(target)
             return self._save_label() if action == REQ_LABEL else self._save_toggle_area()
         if action in (REQ_ON, REQ_OFF):
-            # Passos de amostra: o estado na tela mudou, entao precisa de foto nova.
+            # Sample steps: the screen state changed, so a fresh picture is needed.
             self._select_target(target)
             if not self._refresh_frame():
                 return False
@@ -306,7 +306,7 @@ class RoiSelectorDialog(QDialog):
         return False
 
     def _mark_changed(self) -> None:
-        """Marca alteracao e atualiza o progresso mostrado no assistente."""
+        """Marks a change and refreshes the progress shown in the wizard."""
         self.changed = True
         guide = getattr(self, "_guide", None)
         if guide is not None:
@@ -315,7 +315,7 @@ class RoiSelectorDialog(QDialog):
     # -- helpers -----------------------------------------------------------
 
     def _selected_roi(self) -> Roi | None:
-        """Converte a selecao (coords do widget escalado) para pixels reais do frame."""
+        """Converts the selection (scaled widget coords) to real frame pixels."""
         sel = self._label.selection
         if sel is None or sel.width() < 3 or sel.height() < 3:
             QMessageBox.warning(self, "Calibration", "Drag a rectangle over the image first.")
@@ -329,7 +329,7 @@ class RoiSelectorDialog(QDialog):
         )
 
     def _current_indicator(self):  # type: ignore[no-untyped-def]
-        """Indicador selecionado, ou None se o alvo nao for um indicador."""
+        """The selected indicator, or None when the target is not an indicator."""
         target = self._target.currentText()
         if target in (_PROGRAM_TARGET, _ISO_TARGET):
             QMessageBox.warning(self, "Calibration", "Select an indicator first.")
@@ -344,7 +344,7 @@ class RoiSelectorDialog(QDialog):
         return crop
 
     def _locate_label(self, slug: str) -> tuple[int, int] | None:
-        """Acha o rotulo salvo dentro do frame atual (base do deslocamento do toggle)."""
+        """Finds the stored label in the current frame (base for the toggle offset)."""
         path = self._templates_dir / f"{slug}_label.png"
         template = cv2.imread(str(path), cv2.IMREAD_COLOR) if path.exists() else None
         if template is None:
@@ -367,7 +367,7 @@ class RoiSelectorDialog(QDialog):
             return None
         return int(location[0]), int(location[1])
 
-    # -- modo posicao fixa (Advanced) --------------------------------------
+    # -- fixed-position mode (Advanced) ------------------------------------
 
     def _save_roi(self) -> bool:
         roi = self._selected_roi()
@@ -387,7 +387,7 @@ class RoiSelectorDialog(QDialog):
         return True
 
     def _save_template(self, state: str) -> bool:
-        """Recorta a ROI ATUAL do indicador no frame e grava como template on/off."""
+        """Crops the indicator's CURRENT ROI and stores it as an on/off template."""
         indicator = self._current_indicator()
         if indicator is None:
             return False
@@ -404,10 +404,10 @@ class RoiSelectorDialog(QDialog):
         logger.info("Template saved: {}", path)
         return True
 
-    # -- modo busca por rotulo (assistente) --------------------------------
+    # -- label-search mode (the wizard) ------------------------------------
 
     def _save_label(self) -> bool:
-        """Guarda a imagem do texto do indicador (ex.: 'Vacuum 1')."""
+        """Stores the image of the indicator's text (e.g. 'Vacuum 1')."""
         indicator = self._current_indicator()
         if indicator is None:
             return False
@@ -425,7 +425,7 @@ class RoiSelectorDialog(QDialog):
         return True
 
     def _save_toggle_area(self) -> bool:
-        """Guarda o toggle como deslocamento a partir do rotulo."""
+        """Stores the toggle as an offset from the label."""
         indicator = self._current_indicator()
         if indicator is None:
             return False
@@ -446,10 +446,10 @@ class RoiSelectorDialog(QDialog):
         return True
 
     def _capture_sample(self, state: str) -> bool:
-        """Amostra de cor do toggle no estado atual (sem arrastar nada).
+        """Colour sample of the toggle in its current state (no dragging).
 
-        Localiza o rotulo no frame e recorta o toggle pela geometria salva -
-        assim a amostra sai exatamente da area que sera lida em operacao.
+        It locates the label in the frame and crops the toggle by the stored
+        geometry, so the sample comes from exactly the area read in operation.
         """
         indicator = self._current_indicator()
         if indicator is None:

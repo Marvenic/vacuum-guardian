@@ -1,8 +1,8 @@
-"""Ponto de entrada do Vacuum Guardian.
+"""Vacuum Guardian entry point.
 
-Composicao (composition root): carrega config, monta o MonitorEngine e a
-janela principal, e entrega o controle ao loop do Qt. Toda a fiacao de
-dependencias acontece aqui - nenhum modulo interno importa outro "por fora".
+Composition root: loads the config, builds the MonitorEngine and the main
+window, then hands control to the Qt loop. All dependency wiring happens
+here - no internal module reaches around another.
 """
 
 from __future__ import annotations
@@ -17,20 +17,21 @@ from app import __version__
 
 
 def _enable_crash_dump(log_dir: Path) -> None:
-    """Grava a pilha nativa em logs/crash.log se o processo morrer de vez.
+    """Writes the native stack to logs/crash.log if the process dies outright.
 
-    Um crash em C (OpenCV, Qt, driver de video) mata o processo sem passar pelo
-    Python: o operador so ve "VacuumGuardian.exe has stopped working" e nao
-    sobra nada no log. Com o faulthandler ligado, fica um arquivo dizendo em
-    qual chamada o processo caiu - a diferenca entre diagnosticar e adivinhar.
+    A crash in C (OpenCV, Qt, a video driver) kills the process without going
+    through Python: the operator only sees "VacuumGuardian.exe has stopped
+    working" and nothing is left in the log. With faulthandler enabled, a file
+    records which call brought it down - the difference between diagnosing and
+    guessing.
 
-    O arquivo fica ABERTO durante toda a execucao de proposito: no momento do
-    crash nao ha como abri-lo.
+    The file is left OPEN for the whole run on purpose: at crash time there is
+    no chance to open anything.
     """
     try:
         handle = (log_dir / "crash.log").open("a", encoding="utf-8")
         faulthandler.enable(file=handle, all_threads=True)
-    except OSError as exc:  # sem permissao de escrita: seguir sem o dump
+    except OSError as exc:  # no write permission: carry on without the dump
         logger.warning("Could not enable the crash dump: {}", exc)
 
 
@@ -43,8 +44,8 @@ def main() -> int:
     from PySide2.QtCore import Qt
     from PySide2.QtWidgets import QApplication
 
-    # Config e logs sao gravaveis: ficam ao lado do .exe (ou na raiz em dev),
-    # nunca na pasta temporaria que o PyInstaller descarta ao fechar.
+    # Config and logs are writable: they live beside the .exe (or in the
+    # project root in dev), never in PyInstaller's temporary folder.
     PROJECT_ROOT = user_data_path()
     (PROJECT_ROOT / "logs").mkdir(parents=True, exist_ok=True)
     setup_logging(PROJECT_ROOT / "logs")
@@ -54,9 +55,9 @@ def main() -> int:
     config_service = ConfigService(PROJECT_ROOT / "config.json")
     config = config_service.load()
 
-    # High-DPI: no Qt6 e automatico; no Qt5 precisa ser ligado explicitamente
-    # ANTES de criar o QApplication. Mantem as fontes em pontos (unidade fisica)
-    # com o mesmo tamanho real em Full HD e 4K, como documentado no alarme.
+    # High DPI: automatic on Qt6, but on Qt5 it must be enabled explicitly
+    # BEFORE creating the QApplication. It keeps point-sized fonts at the same
+    # physical size on Full HD and 4K, as documented in the alarm popup.
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)

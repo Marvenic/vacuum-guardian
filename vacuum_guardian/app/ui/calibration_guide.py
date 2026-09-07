@@ -1,20 +1,20 @@
-"""Assistente de calibracao (wizard) embutido na UI, em ingles e portugues.
+"""Calibration wizard embedded in the UI, in English and Portuguese.
 
-Por que existe: a tela antiga mostrava os sete botoes de calibracao ao mesmo
-tempo, em duas fileiras de modos diferentes, e o operador nao tinha como saber
-a ordem. Aqui existe UM passo por vez, com UM botao de acao - a ordem deixa de
-ser conhecimento tribal e vira a propria interface.
+Why it exists: the old screen showed all seven calibration buttons at once,
+in two rows of different modes, and the operator had no way to know the
+order. Here there is ONE step at a time with ONE action button - the order
+stops being tribal knowledge and becomes the interface itself.
 
-Este modulo e o CONDUTOR do assistente: guarda o roteiro, sabe em que passo
-esta e qual acao aquele passo dispara. Quem EXECUTA a acao (recortar a imagem,
-gravar o PNG) e a janela de calibracao, que registra um handler.
+This module DRIVES the wizard: it owns the script, knows which step is
+current and which action it triggers. The one that EXECUTES the action
+(cropping, writing the PNG) is the calibration window, via a handler.
 
-O "onde eu parei" do rodape le a configuracao e os arquivos de template de
-verdade; ao abrir, o assistente pula para o primeiro passo que ainda falta.
+The progress list at the bottom reads the real configuration and template
+files; on opening, the wizard jumps to the first step still missing.
 
-Idioma: este e o unico texto do app que existe tambem em portugues, a pedido
-do chao de fabrica. Os NOMES DOS ALVOS do OSAI ficam em ingles mesmo na versao
-portuguesa, porque e o que esta escrito na tela da maquina.
+Language: this is the only text in the app that also exists in Portuguese,
+at the shop floor's request. The OSAI TARGET NAMES stay in English even in
+the Portuguese version, because that is what the machine screen shows.
 """
 
 from __future__ import annotations
@@ -39,8 +39,8 @@ from PySide2.QtWidgets import (
 
 from ..models import AppConfig
 
-# Chaves de progresso/acao: ligam um passo do assistente ao artefato que ele
-# produz e ao handler que a janela de calibracao registra.
+# Progress/action keys: they tie a wizard step to the artefact it produces
+# and to the handler the calibration window registers.
 REQ_LABEL = "label"
 REQ_TOGGLE = "toggle"
 REQ_ON = "on"
@@ -52,15 +52,15 @@ LANGUAGES = ("en", "pt")
 
 
 def slug_of(name: str) -> str:
-    """Mesmo slug de IndicatorConfig, sem depender do objeto de config."""
+    """Same slug as IndicatorConfig, without needing the config object."""
     return name.strip().lower().replace(" ", "_")
 
 
 def progress_key(indicator: str, requirement: str) -> str:
-    """Chave de progresso por indicador (ex.: 'vacuum_pump_1:label').
+    """Per-indicator progress key (e.g. 'vacuum_pump_1:label').
 
-    Progresso e por indicador: ter calibrado um nao pode marcar o outro
-    como pronto.
+    Progress is per indicator: calibrating one must not mark the other as
+    done.
     """
     return f"{slug_of(indicator)}:{requirement}"
 
@@ -68,27 +68,27 @@ def progress_key(indicator: str, requirement: str) -> str:
 @dataclass(frozen=True)
 class GuideStep:
     title: str
-    body: str                      # rich text simples (<b>, <ul>, <br>)
-    note: str = ""                 # "para que serve" - fundo neutro
-    warning: str = ""              # armadilha conhecida - fundo destacado
-    requires: str | None = None    # passo pendente enquanto o artefato faltar
-    action: str = ""               # chave do handler; vazio = passo so de leitura
-    needs_selection: bool = False  # exige um retangulo arrastado na imagem
-    anchor: str = ""               # identidade estavel entre idiomas
-    # A QUAL indicador este passo pertence (vazio nos passos gerais). Sem isto
-    # o assistente capturava tudo no indicador critico, mesmo com o texto
-    # falando de outro - a origem do "capturei o Vacuum Pump 1 e ele continua
-    # sem leitura".
+    body: str                      # simple rich text (<b>, <ul>, <br>)
+    note: str = ""                 # "why this matters" - neutral background
+    warning: str = ""              # known pitfall - highlighted background
+    requires: str | None = None    # pending while the artefact is missing
+    action: str = ""               # handler key; empty = read-only step
+    needs_selection: bool = False  # requires a rectangle dragged on the image
+    anchor: str = ""               # stable identity across languages
+    # WHICH indicator this step belongs to (empty on general steps). Without
+    # it the wizard captured everything into the critical indicator, even
+    # while the text talked about another one - the source of "I calibrated
+    # Vacuum Pump 1 and it still cannot be read".
     indicator: str = ""
 
 
 def _capture_steps_en(name: str) -> list[GuideStep]:
-    """Os quatro passos de captura de UM indicador, em ingles.
+    """The four capture steps for ONE indicator, in English.
 
-    Gerados POR INDICADOR (e nao escritos uma vez para o indicador critico):
-    o texto tem de dizer o nome que o operador esta calibrando naquele
-    momento, senao ele captura o Vacuum Pump 1 lendo instrucoes do Vacuum 1 -
-    e o arquivo acaba gravado no indicador errado.
+    Generated PER INDICATOR (not written once for the critical one): the text
+    has to name whichever indicator is being calibrated at that moment, or the
+    operator captures Vacuum Pump 1 while reading instructions for Vacuum 1 -
+    and the file ends up stored against the wrong indicator.
     """
     slug = slug_of(name)
     return [
@@ -174,7 +174,7 @@ def _capture_steps_en(name: str) -> list[GuideStep]:
 
 
 def _capture_steps_pt(name: str) -> list[GuideStep]:
-    """Os quatro passos de captura de UM indicador, em portugues."""
+    """The four capture steps for ONE indicator, in Portuguese."""
     slug = slug_of(name)
     return [
         GuideStep(
@@ -450,7 +450,7 @@ def _steps_pt(indicators: list[str]) -> list[GuideStep]:
     return steps
 
 
-# Textos da moldura do assistente (cabecalho, botoes, checklist).
+# Wizard chrome text (header, buttons, checklist).
 _UI = {
     "en": {
         "header": "Step {current} of {total}",
@@ -506,11 +506,11 @@ _UI = {
 
 
 def build_steps(indicators, language: str = "en"):  # type: ignore[no-untyped-def]
-    """Roteiro na ordem exata em que as capturas precisam acontecer.
+    """The script, in the exact order the captures must happen.
 
-    `indicators` e a lista de nomes na ordem de calibracao (ex.:
-    ["Vacuum Pump 1", "Vacuum 1"]). Aceita tambem um unico nome por
-    conveniencia de quem so tem um indicador.
+    `indicators` is the list of names in calibration order (e.g.
+    ["Vacuum Pump 1", "Vacuum 1"]). A single name is also accepted for
+    convenience when there is only one indicator.
     """
     names = [indicators] if isinstance(indicators, str) else list(indicators)
     return _steps_pt(names) if language == "pt" else _steps_en(names)
@@ -521,17 +521,17 @@ class ChecklistItem:
     text: str
     done: bool
     optional: bool = False
-    group: str = ""  # nome do indicador; vazio nos itens opcionais/gerais
+    group: str = ""  # indicator name; empty on general/optional items
 
 
 def calibration_status(
     config: AppConfig, templates_dir: Path, language: str = "en"
 ) -> tuple[list[ChecklistItem], set[str]]:
-    """Le config + arquivos e devolve (itens para exibir, chaves ja concluidas).
+    """Reads config and files, returning (items to show, keys already done).
 
-    O progresso e POR INDICADOR: ter calibrado o Vacuum Pump 1 nao pode marcar
-    o Vacuum 1 como pronto (e vice-versa). As chaves sao compostas
-    ("<slug>:<requisito>") - ver progress_key().
+    Progress is PER INDICATOR: calibrating Vacuum Pump 1 must not mark
+    Vacuum 1 as done (nor the other way round). Keys are composite
+    ("<slug>:<requirement>") - see progress_key().
     """
     texts = _UI.get(language, _UI["en"])
     names = texts["items"]
@@ -567,7 +567,7 @@ def calibration_status(
 
 
 class CalibrationGuide(QWidget):
-    """Assistente: um passo por vez, um botao de acao, progresso real."""
+    """The wizard: one step at a time, one action button, real progress."""
 
     step_changed = Signal()
 
@@ -583,7 +583,7 @@ class CalibrationGuide(QWidget):
         self._config = config
         self._templates_dir = templates_dir
         self._on_language_changed = on_language_changed
-        # Handler devolve True se a captura deu certo - so entao avancamos.
+        # The handler returns True when the capture worked - only then advance.
         self._action_handler = action_handler
         self._language = config.guide_language if config.guide_language in LANGUAGES else "en"
         self._steps = build_steps(self._indicator_names(), self._language)
@@ -636,7 +636,7 @@ class CalibrationGuide(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
 
-        # UM botao de acao por passo: e o coracao da simplificacao.
+        # ONE action button per step: the heart of the simplification.
         self._action = QPushButton()
         self._action.setMinimumHeight(46)
         self._action.setStyleSheet(
@@ -681,14 +681,14 @@ class CalibrationGuide(QWidget):
         self._action_handler = handler
 
     def _indicator_names(self) -> list[str]:
-        """Nomes na ordem do config - e a ordem em que o assistente calibra."""
+        """Names in config order - which is the order the wizard calibrates in."""
         return [ind.name for ind in self._config.indicators]
 
     def current_step(self) -> GuideStep:
         return self._steps[self._index]
 
     def _run_action(self) -> None:
-        """Executa a acao do passo e so avanca se a captura deu certo."""
+        """Runs the step's action and only advances if the capture worked."""
         step = self.current_step()
         if not step.action or self._action_handler is None:
             return
@@ -704,7 +704,7 @@ class CalibrationGuide(QWidget):
         return self._language
 
     def _toggle_language(self) -> None:
-        """Alterna EN <-> PT mantendo o passo atual (a ancora e a mesma)."""
+        """Switches EN <-> PT keeping the current step (the anchor is shared)."""
         anchor = self.current_step().anchor
         self._language = "pt" if self._language == "en" else "en"
         self._steps = build_steps(self._indicator_names(), self._language)
@@ -723,7 +723,7 @@ class CalibrationGuide(QWidget):
         self._render()
 
     def _first_pending(self) -> int:
-        """Primeiro passo cujo artefato ainda nao existe (ou o de teste, se completo)."""
+        """First step whose artefact is missing (or the test step, if complete)."""
         _, done = calibration_status(self._config, self._templates_dir, self._language)
         for position, step in enumerate(self._steps):
             if step.requires is not None and step.requires not in done:
@@ -731,7 +731,7 @@ class CalibrationGuide(QWidget):
         return next((i for i, step in enumerate(self._steps) if step.anchor == "test"), 0)
 
     def refresh(self, jump_to_pending: bool = False) -> None:
-        """Re-le o progresso do disco; opcionalmente reposiciona no passo pendente."""
+        """Re-reads progress from disk; optionally jumps to the pending step."""
         if jump_to_pending:
             self._index = self._first_pending()
         self._render()
@@ -754,7 +754,7 @@ class CalibrationGuide(QWidget):
         self._warning.setText(step.warning)
         self._warning.setVisible(bool(step.warning))
 
-        # O botao verde so existe nos passos que capturam algo.
+        # The green button only exists on steps that capture something.
         self._action.setVisible(bool(step.action))
         if step.action:
             self._action.setText(texts["actions"][step.action])
@@ -770,8 +770,8 @@ class CalibrationGuide(QWidget):
         rows = [
             "<b>" + texts["where"] + "</b>"
         ]
-        # Agrupado por indicador: com dois vacuos, uma lista corrida de oito
-        # itens nao diria a QUAL deles cada linha se refere.
+        # Grouped by indicator: with two vacuums, a flat list of eight items
+        # would not say WHICH one each line refers to.
         group = ""
         for item in items:
             if item.group and item.group != group:
@@ -791,7 +791,7 @@ class CalibrationGuide(QWidget):
 
 
 class CalibrationGuideDialog(QDialog):
-    """Mesmo roteiro em janela propria, so para leitura (sem capturar nada)."""
+    """The same script in its own window, read-only (captures nothing)."""
 
     def __init__(
         self,
@@ -802,8 +802,8 @@ class CalibrationGuideDialog(QDialog):
         super().__init__()
         self.setWindowTitle("Calibration guide - Vacuum Guardian")
         self.guide = CalibrationGuide(config, templates_dir, self, on_language_changed)
-        # Sem janela de calibracao por tras nao ha o que capturar: o botao de
-        # acao ficaria enganando o operador.
+        # With no calibration window behind it there is nothing to capture: an
+        # action button would only mislead the operator.
         self.guide._action.setVisible(False)
         self.guide._action.setEnabled(False)
 

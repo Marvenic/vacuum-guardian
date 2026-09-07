@@ -1,4 +1,4 @@
-"""Servicos de negocio (regras de alarme, orquestracao do monitoramento)."""
+"""Business services (alarm rules, monitoring orchestration, usage reporting)."""
 
 from .rule_engine import RuleEngine
 

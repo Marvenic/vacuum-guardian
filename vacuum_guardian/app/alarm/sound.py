@@ -1,8 +1,8 @@
-"""Reproducao do som de alarme.
+"""Alarm sound playback.
 
-winsound com SND_ASYNC|SND_LOOP toca o WAV em loop sem bloquear a thread -
-exatamente o requisito 6 ("tocar WAV continuamente"). A interface SoundPlayer
-permite substituir por um fake nos testes (nao queremos testes barulhentos).
+winsound with SND_ASYNC|SND_LOOP plays the WAV on loop without blocking the
+thread. The SoundPlayer interface allows a fake in tests (nobody wants a
+noisy test suite).
 """
 
 from __future__ import annotations
@@ -14,26 +14,26 @@ from loguru import logger
 
 
 class SoundPlayer(Protocol):
-    """Contrato minimo do reprodutor de som do alarme."""
+    """Minimum contract for the alarm sound player."""
 
     def start_loop(self, wav_path: Path) -> None:
-        """Inicia o WAV em loop (nao bloqueante). Chamadas repetidas sao inofensivas."""
+        """Starts the WAV on loop (non-blocking). Repeat calls are harmless."""
         ...
 
     def stop(self) -> None:
-        """Para o som imediatamente."""
+        """Stops the sound immediately."""
         ...
 
 
 class WinSoundPlayer:
-    """SoundPlayer real, baseado em winsound (stdlib do Windows)."""
+    """Real SoundPlayer, backed by winsound (Windows stdlib)."""
 
     def __init__(self) -> None:
         self._playing = False
 
     def start_loop(self, wav_path: Path) -> None:
         if self._playing:
-            return  # ja esta tocando; reiniciar causaria "gaguejar"
+            return  # already playing; restarting would make it stutter
         import winsound
 
         try:
@@ -43,8 +43,8 @@ class WinSoundPlayer:
             )
             self._playing = True
         except RuntimeError as exc:
-            # WAV ausente/corrompido: cai para o som de exclamacao do sistema,
-            # em loop nao ha - mas um alarme degradado e melhor que silencio.
+            # Missing or broken WAV: fall back to the system sound. There is
+            # no loop then, but a degraded alarm beats silence.
             logger.error("Failed to play {} ({}) - falling back to the system sound", wav_path, exc)
             winsound.MessageBeep(winsound.MB_ICONHAND)
 

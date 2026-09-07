@@ -1,13 +1,12 @@
-"""Testes da escolha da janela do OSAI.
+"""Tests for choosing the OSAI window.
 
-Motivados por falha real na CNC: ao reiniciar, o app "nao detectava" a tela do
-OSAI. Medido nesta maquina, uma janela MINIMIZADA reporta:
+Motivated by a real CNC failure: after a restart the app "did not detect" the
+OSAI screen. Measured on that machine, a MINIMISED window reports:
 
     IsWindowVisible=True  IsIconic=True  rect=(-32000,-32000) 391x61
 
-ou seja, passava no filtro antigo (visivel + largura/altura positivas). O app
-capturava uma regiao fora da tela, o OCR nao lia nada e nenhum alarme - nem o
-laranja - chegava a disparar.
+which passed the old filter (visible + positive width/height). The app then
+captured an off-screen region, OCR read nothing, and no alarm ever fired.
 """
 
 from __future__ import annotations
@@ -34,13 +33,13 @@ def test_no_match_returns_none() -> None:
 
 
 def test_minimized_window_is_refused(caplog) -> None:  # type: ignore[no-untyped-def]
-    """O bug: minimizada tem rect fora da tela, capturar ali nao le nada."""
+    """The bug: a minimised window has an off-screen rect and reads nothing."""
     candidates = [_window("OSAI", left=-32000, top=-32000, width=391, height=61, minimized=True)]
     assert choose_window(candidates, "osai") is None
 
 
 def test_offscreen_window_is_refused_even_if_not_flagged() -> None:
-    """Cinto e suspensorio: coordenada fora da tela basta para recusar."""
+    """Belt and braces: an off-screen coordinate alone is enough to refuse."""
     candidates = [_window("OSAI", left=-32000, top=-32000, width=391, height=61)]
     assert choose_window(candidates, "osai") is None
 

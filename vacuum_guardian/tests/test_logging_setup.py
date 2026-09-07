@@ -1,8 +1,8 @@
-"""Testes do setup de logging.
+"""Tests for the logging setup.
 
-Regressao importante: no executavel sem console (PyInstaller console=False),
-o Windows nao fornece stdout/stderr e sys.stderr fica None. O loguru recusa
-esse sink com TypeError, derrubando o app antes mesmo da janela abrir.
+Important regression: in the console-less executable (PyInstaller
+console=False) Windows provides no stdout/stderr and sys.stderr is None.
+loguru rejects that sink with a TypeError, killing the app before the window
 """
 
 from __future__ import annotations
@@ -17,12 +17,12 @@ from app.logging import setup_logging
 
 
 def test_works_without_stderr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Cenario do .exe sem console: deve configurar so o arquivo, sem erro."""
+    """The console-less .exe case: it must configure only the file, with no error."""
     monkeypatch.setattr(sys, "stderr", None)
     setup_logging(tmp_path)  # nao pode lancar TypeError
     logger.info("linha de teste")
-    logger.complete()  # garante o flush do sink com enqueue=True
-    assert list(tmp_path.glob("*.log")), "log em arquivo deveria ter sido criado"
+    logger.complete()  # flushes the sink that uses enqueue=True
+    assert list(tmp_path.glob("*.log")), "the file log should have been created"
 
 
 def test_writes_to_file(tmp_path: Path) -> None:

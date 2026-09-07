@@ -1,10 +1,10 @@
-"""Localiza a janela do OSAI no Windows via API nativa (ctypes/user32).
+"""Locates the OSAI window through the native Windows API (ctypes/user32).
 
-Usamos ctypes em vez de pywin32 para nao adicionar dependencia: precisamos
-apenas de EnumWindows + GetWindowText + GetWindowRect. A busca e por
-substring do titulo (case-insensitive), configuravel em config.json
-("window_title_hint"), porque nao sabemos ainda o titulo exato da janela
-do OSAI no chao de fabrica.
+ctypes instead of pywin32 to avoid a dependency: all we need is EnumWindows
+plus GetWindowText and GetWindowRect. The search is by title substring
+(case-insensitive), configurable through config.json ("window_title_hint"),
+because the exact OSAI window title varies between installations.
+
 """
 
 from __future__ import annotations
@@ -20,18 +20,18 @@ _user32 = ctypes.windll.user32
 _EnumWindowsProc = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
 
 
-# Janela minimizada no Windows fica em (-32000, -32000) COM largura e altura
-# positivas, e IsWindowVisible ainda devolve True. Medido nesta maquina:
+# A minimised window sits at (-32000, -32000) WITH positive width and
+# height, and IsWindowVisible still returns True. Measured here:
 #   NORMAL     IsWindowVisible=True IsIconic=False rect=(1654,858) 532x388
-#   MINIMIZADA IsWindowVisible=True IsIconic=True  rect=(-32000,-32000) 391x61
-# Sem checar IsIconic, o app "achava" o OSAI minimizado e capturava uma regiao
-# fora da tela: frame inutil, OCR vazio, alarme nunca disparava.
+#   MINIMISED IsWindowVisible=True IsIconic=True  rect=(-32000,-32000) 391x61
+# Without checking IsIconic the app "found" a minimised OSAI and captured an
+# off-screen region: useless frame, empty OCR, alarm never fired.
 _OFFSCREEN = -20000
 
 
 @dataclass(frozen=True)
 class WindowCandidate:
-    """Janela enumerada, antes de decidir se serve."""
+    """An enumerated window, before deciding whether it is usable."""
 
     title: str
     left: int
@@ -42,7 +42,7 @@ class WindowCandidate:
 
     @property
     def usable(self) -> bool:
-        """Da para capturar? Precisa estar restaurada e dentro da tela."""
+        """Can it be captured? It must be restored and on screen."""
         return (
             not self.minimized
             and self.width > 0
@@ -54,7 +54,7 @@ class WindowCandidate:
 
 @dataclass(frozen=True)
 class WindowRect:
-    """Retangulo absoluto (coordenadas de tela) de uma janela encontrada."""
+    """Absolute rectangle (screen coordinates) of a window that was found."""
 
     left: int
     top: int
@@ -64,26 +64,26 @@ class WindowRect:
 
 
 class WindowLocator:
-    """Encontra a janela cujo titulo contem o hint configurado (SRP: so localiza)."""
+    """Finds the window whose title contains the configured hint."""
 
     def __init__(self, title_hint: str) -> None:
         self._hint = title_hint.lower()
 
     def find(self) -> WindowRect | None:
-        """Retorna o retangulo da melhor janela que casa com o hint.
+        """Returns the rectangle of the best window matching the hint.
 
-        Retorna None se nada servir - o chamador decide o fallback (por
-        exemplo, capturar o monitor inteiro).
+        None if nothing is usable - the caller decides the fallback (capturing
+        the whole monitor, for instance).
         """
         return choose_window(self._enumerate(), self._hint)
 
     def _enumerate(self) -> list[WindowCandidate]:
-        """Lista as janelas com titulo, sem julgar se servem."""
+        """Lists titled windows, without judging whether they are usable."""
         candidates: list[WindowCandidate] = []
 
         def _callback(hwnd: int, _lparam: int) -> bool:
             if not _user32.IsWindowVisible(hwnd):
-                return True  # continua a enumeracao
+                return True  # keep enumerating
             length = _user32.GetWindowTextLengthW(hwnd)
             if length == 0:
                 return True
@@ -109,16 +109,16 @@ class WindowLocator:
 
 
 def choose_window(candidates: list[WindowCandidate], hint: str) -> WindowRect | None:
-    """Escolhe a janela a capturar entre as que casam com o hint.
+    """Picks which matching window to capture.
 
-    Duas decisoes que vieram de falhas reais na CNC:
+    Two decisions that came from real failures on the CNC:
 
-    - MINIMIZADA nao serve. O Windows continua dizendo IsWindowVisible=True e
-      devolve um retangulo fora da tela; capturar ali rende um frame inutil e
-      o app parecia "achar" o OSAI sem conseguir ler nada.
-    - Vence a MAIOR, nao a primeira. O hint "OSAI" tambem casa com janelas de
-      servico como "OSAI BootController", que sao pequenas; a tela de operacao
-      ocupa o monitor.
+    - MINIMISED is no good. Windows still reports IsWindowVisible=True and
+      returns an off-screen rectangle; capturing there yields a useless frame
+      and the app appeared to "find" OSAI while reading nothing.
+    - The LARGEST wins, not the first. The hint "OSAI" also matches service
+      windows such as "OSAI BootController", which are small; the operating
+      screen fills the monitor.
     """
     wanted = hint.lower()
     matching = [c for c in candidates if wanted in c.title.lower()]
@@ -126,8 +126,8 @@ def choose_window(candidates: list[WindowCandidate], hint: str) -> WindowRect | 
 
     if not usable:
         if matching:
-            # Diferenciar "nao existe" de "existe mas esta minimizada" poupa o
-            # operador de procurar defeito no lugar errado.
+            # Telling "does not exist" apart from "exists but is minimised" saves
+            # the operator from looking for the fault in the wrong place.
             logger.warning(
                 "Window '{}' found but not usable (minimised or off-screen): {}",
                 hint, ", ".join(sorted({c.title for c in matching})),

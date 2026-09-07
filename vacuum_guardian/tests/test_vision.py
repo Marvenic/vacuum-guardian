@@ -1,4 +1,4 @@
-"""Testes da camada de visao com imagens sinteticas (sem depender do OSAI)."""
+"""Vision-layer tests with synthetic images (no OSAI needed)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from app.vision import TemplateMatcher
 
 
 def _make_indicator(color: tuple[int, int, int]) -> np.ndarray:
-    """Gera um 'indicador' sintetico 40x40: circulo colorido sobre fundo cinza."""
+    """Builds a synthetic 40x40 indicator: a coloured circle on grey."""
     img = np.full((40, 40, 3), 60, dtype=np.uint8)
     cv2.circle(img, (20, 20), 12, color, -1)
     return img
@@ -23,7 +23,7 @@ def _make_indicator(color: tuple[int, int, int]) -> np.ndarray:
 
 @pytest.fixture()
 def templates_dir(tmp_path: Path) -> Path:
-    """Templates sinteticos para dois indicadores (vacuum_pump e vacuum1)."""
+    """Synthetic templates for two indicators (vacuum_pump and vacuum1)."""
     for slug in ("vacuum_pump", "vacuum1"):
         cv2.imwrite(str(tmp_path / f"{slug}_on.png"), _make_indicator((0, 255, 0)))
         cv2.imwrite(str(tmp_path / f"{slug}_off.png"), _make_indicator((0, 0, 255)))
@@ -39,7 +39,7 @@ def _matcher(templates_dir: Path, slug: str = "vacuum_pump") -> TemplateMatcher:
 
 
 class FakeReader:
-    """TextReader de teste - devolve um texto fixo."""
+    """Test TextReader - returns fixed text."""
 
     def __init__(self, text: str = "SINK_CUTOUT_01") -> None:
         self.text = text
@@ -117,7 +117,7 @@ def test_detection_service_roi_out_of_bounds(templates_dir: Path) -> None:
 
 
 def test_windows_ocr_reads_rendered_text() -> None:
-    """Teste de integracao com a engine real do Windows; pula se indisponivel."""
+    """Integration test against the real Windows engine; skipped if absent."""
     try:
         from app.vision import WindowsOcrReader
 

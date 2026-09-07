@@ -1,9 +1,9 @@
-"""Carrega e salva AppConfig em config.json.
+"""Loads and saves AppConfig in config.json.
 
-Serializacao manual (sem lib externa): o schema e pequeno e estavel, e assim
-controlamos exatamente o que vai para o disco. Campos desconhecidos no JSON
-sao ignorados; campos ausentes recebem o default do dataclass - isso torna
-upgrades de versao do app tolerantes a configs antigas.
+Hand-written serialisation (no external library): the schema is small and
+stable, so we control exactly what reaches the disk. Unknown JSON fields are
+ignored and missing ones take the dataclass default, which makes version
+upgrades tolerant of older configuration files.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from ..models import AppConfig, IndicatorConfig, Roi, ToggleGeometry
 
 
 class ConfigService:
-    """Responsavel unico pela leitura/escrita de config.json (SRP)."""
+    """Sole owner of reading and writing config.json."""
 
     def __init__(self, path: Path) -> None:
         self._path = path
@@ -27,10 +27,10 @@ class ConfigService:
         return self._path
 
     def load(self) -> AppConfig:
-        """Le o config.json; se nao existir ou estiver corrompido, retorna defaults.
+        """Reads config.json; returns defaults if missing or corrupted.
 
-        Um config corrompido nunca deve impedir o monitor de subir - em ambiente
-        industrial, subir com defaults e logar o problema e melhor que crashar.
+        A corrupted config must never stop the monitor from starting - in an
+        industrial setting, starting with defaults and logging beats crashing.
         """
         if not self._path.exists():
             logger.info("config.json not found at {} - using defaults", self._path)
@@ -43,14 +43,14 @@ class ConfigService:
             return AppConfig()
 
     def save(self, config: AppConfig) -> None:
-        """Grava o config de forma atomica (escreve em .tmp e renomeia)."""
+        """Writes the config atomically (to .tmp, then renames)."""
         data = self._to_dict(config)
         tmp = self._path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
         tmp.replace(self._path)
         logger.info("Configuration saved to {}", self._path)
 
-    # -- serializacao ------------------------------------------------------
+    # -- serialisation -----------------------------------------------------
 
     @staticmethod
     def _roi_to_dict(roi: Roi | None) -> dict[str, int] | None:
@@ -114,6 +114,14 @@ class ConfigService:
             "critical_indicator": c.critical_indicator,
             "label_threshold": c.label_threshold,
             "guide_language": c.guide_language,
+            "telemetry_enabled": c.telemetry_enabled,
+            "telemetry_prompted": c.telemetry_prompted,
+            "telemetry_url": c.telemetry_url,
+            "install_id": c.install_id,
+            "operator_company": c.operator_company,
+            "operator_name": c.operator_name,
+            "operator_email": c.operator_email,
+            "operator_phone": c.operator_phone,
         }
 
     def _from_dict(self, raw: dict[str, object]) -> AppConfig:
@@ -147,4 +155,12 @@ class ConfigService:
             critical_indicator=str(raw.get("critical_indicator", defaults.critical_indicator)),
             label_threshold=float(raw.get("label_threshold", defaults.label_threshold)),  # type: ignore[arg-type]
             guide_language=str(raw.get("guide_language", defaults.guide_language)),
+            telemetry_enabled=bool(raw.get("telemetry_enabled", defaults.telemetry_enabled)),
+            telemetry_prompted=bool(raw.get("telemetry_prompted", defaults.telemetry_prompted)),
+            telemetry_url=str(raw.get("telemetry_url", defaults.telemetry_url)),
+            install_id=str(raw.get("install_id", defaults.install_id)),
+            operator_company=str(raw.get("operator_company", defaults.operator_company)),
+            operator_name=str(raw.get("operator_name", defaults.operator_name)),
+            operator_email=str(raw.get("operator_email", defaults.operator_email)),
+            operator_phone=str(raw.get("operator_phone", defaults.operator_phone)),
         )

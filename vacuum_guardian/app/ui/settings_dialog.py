@@ -1,11 +1,11 @@
-"""Tela de configuracoes (requisito 9).
+"""Settings screen.
 
-Edita uma COPIA da AppConfig; so no "Salvar" a copia substitui a original e
-e persistida. Isso evita que um cancelamento deixe o monitor rodando com
-valores parcialmente alterados.
+It edits a COPY of AppConfig; only on Save does the copy replace the original
+and get persisted. That stops a cancel from leaving the monitor running with
+half-changed values.
 
-A validacao de faixa fica aqui (limites de widget), mas nenhuma regra de
-negocio: a janela nao sabe o que e alarme, apenas quais campos existem.
+Range validation lives here (widget limits), but no business rule does: the
+window does not know what an alarm is, only which fields exist.
 """
 
 from __future__ import annotations
@@ -72,21 +72,21 @@ class SettingsDialog(QDialog):
         )
         self._indicators.setFixedHeight(70)
 
-        # Indicador que precisa estar ON no momento critico. Fica em campo
-        # proprio porque a regra principal gira toda em torno dele.
+        # The indicator that must be ON at the critical moment. It gets its own
+        # field because the main rule revolves entirely around it.
         self._critical = QLineEdit(self._draft.critical_indicator)
         self._critical.setToolTip(
             "Indicator that must be ON once the program starts cutting "
             "(must match one of the names above)."
         )
 
-        # Autostart nao vive no config.json: seu estado real e a existencia do
-        # atalho na pasta Startup, entao lemos e escrevemos direto de la.
+        # Autostart does not live in config.json: its real state is whether the
+        # Startup shortcut exists, so we read and write it there directly.
         self._autostart = AutoStart()
         self._autostart_check = QCheckBox("Start automatically with Windows")
         self._autostart_check.setChecked(self._autostart.is_enabled())
 
-        # Som opcional: fabricas barulhentas / PC da CNC sem alto-falante.
+        # Optional sound: noisy shops / CNC PCs with no speakers.
         self._sound_check = QCheckBox("Play alarm sound")
         self._sound_check.setChecked(self._draft.alarm_sound_enabled)
         self._sound_check.setToolTip(
@@ -101,7 +101,7 @@ class SettingsDialog(QDialog):
         wav_row.addWidget(self._wav)
         wav_row.addWidget(browse)
 
-        # Escolher um WAV so faz sentido com o som ligado.
+        # Choosing a WAV only makes sense with the sound on.
         def _sync_wav_row(enabled: bool) -> None:
             self._wav.setEnabled(enabled)
             browse.setEnabled(enabled)
@@ -140,7 +140,7 @@ class SettingsDialog(QDialog):
             self._wav.setText(path)
 
     def _apply(self) -> None:
-        """Transfere os widgets para o rascunho e conclui o dialogo."""
+        """Copies the widgets into the draft and closes the dialog."""
         self._draft.window_title_hint = self._title.text().strip()
         self._draft.capture_interval_s = float(self._interval.value())
         self._draft.template_threshold = float(self._threshold.value())
@@ -148,7 +148,7 @@ class SettingsDialog(QDialog):
             line.strip().upper() for line in self._programs.toPlainText().splitlines() if line.strip()
         ]
 
-        # Indicadores: preserva a ROI ja calibrada dos que mantiveram o nome.
+        # Indicators: keep the calibrated ROI of those whose name did not change.
         existing = {i.name: i for i in self._draft.indicators}
         names = [line.strip() for line in self._indicators.toPlainText().splitlines() if line.strip()]
         self._draft.indicators = [
@@ -162,7 +162,7 @@ class SettingsDialog(QDialog):
         wav = self._wav.text().strip()
         self._draft.alarm_wav = wav if not wav or Path(wav).exists() else ""
 
-        # Aplica o autostart apenas se o usuario mudou a opcao.
+        # Only touch autostart if the user actually changed the option.
         desired = self._autostart_check.isChecked()
         if desired != self._autostart.is_enabled():
             self._autostart.set_enabled(desired)

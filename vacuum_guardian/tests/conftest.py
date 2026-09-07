@@ -1,4 +1,4 @@
-"""Fixtures compartilhadas: Qt em modo offscreen para testes de UI."""
+"""Shared fixtures: Qt in offscreen mode for UI tests."""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ import os
 
 import pytest
 
-# Precisa ser definido ANTES de qualquer QApplication ser criada.
+# Must be set BEFORE any QApplication is created.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 @pytest.fixture(scope="session")
 def qt_app():
-    """QApplication unica para toda a sessao (Qt nao permite duas)."""
+    """A single QApplication for the whole session (Qt allows only one)."""
     from PySide2.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])

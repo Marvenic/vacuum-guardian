@@ -1,4 +1,4 @@
-"""Testes do ConfigService: round-trip, defaults e tolerancia a arquivo corrompido."""
+"""ConfigService: round-trip, defaults and tolerance of a corrupted file."""
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def test_sound_option_round_trip(tmp_path: Path) -> None:
 
 
 def test_missing_sound_option_defaults_to_enabled(tmp_path: Path) -> None:
-    """Config antigo (sem o campo) deve manter o som ligado - fail-safe."""
+    """An older config (without the field) must keep the sound on - fail-safe."""
     path = tmp_path / "config.json"
     path.write_text('{"window_title_hint": "OSAI"}', encoding="utf-8")
     assert ConfigService(path).load().alarm_sound_enabled is True

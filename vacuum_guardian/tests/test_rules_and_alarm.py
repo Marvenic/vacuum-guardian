@@ -1,4 +1,4 @@
-"""Testes do Rule Engine e da maquina de estados do alarme."""
+"""Tests for the rule engine and the alarm state machine."""
 
 from __future__ import annotations
 
@@ -114,30 +114,30 @@ def test_alarm_triggers_sound_and_popup() -> None:
 
 
 def test_acknowledge_frees_the_screen_and_stops_the_sound() -> None:
-    """O aviso cobre a tela do OSAI e precisa sair no clique."""
+    """The warning covers the OSAI screen and must clear on the click."""
     controller, player = _controller()
     controller.update(ALARM)
     controller.acknowledge()
     status = controller.update(ALARM)  # condicao persiste no ciclo seguinte
-    assert not status.popup_should_show  # tela liberada para operar a maquina
+    assert not status.popup_should_show  # screen freed to operate the machine
     assert not player.playing
     assert status.snoozed
 
 
 def test_snooze_lasts_five_minutes_then_the_alarm_returns() -> None:
-    """O operador precisa de tempo para ir ate a maquina - e o aviso volta."""
+    """The operator needs time to reach the machine - and the warning returns."""
     controller, player = _controller()
     start = datetime(2026, 8, 30, 10, 0, 0)
     controller.update(ALARM, start)
     controller.acknowledge(start)
 
-    # Durante a soneca: nada na tela, nada de som.
+    # During the snooze: nothing on screen, no sound.
     during = controller.update(ALARM, start + timedelta(minutes=4, seconds=59))
     assert not during.popup_should_show
     assert not player.playing
     assert during.snoozed
 
-    # Passados os 5 minutos, a condicao ainda existe -> avisa de novo.
+    # After five minutes the condition still holds -> it warns again.
     after = controller.update(ALARM, start + timedelta(minutes=5, seconds=1))
     assert after.popup_should_show
     assert player.playing
@@ -151,13 +151,13 @@ def test_condition_clearing_resets_everything() -> None:
     status = controller.update(CLEAR)  # bomba religada
     assert not status.popup_should_show
     assert not player.playing
-    # Novo alarme depois do reset volta a tocar som (silencio nao e permanente).
+    # A new alarm after the reset plays sound again (silence is not permanent).
     status = controller.update(ALARM)
     assert status.popup_should_show
     assert player.playing
 
 
-# -- Som opcional (fabrica barulhenta / PC sem alto-falante) ---------------
+# -- Optional sound (noisy shop / PC with no speakers) --------------------
 
 def _controller_muted_config() -> tuple[AlarmController, FakePlayer]:
     player = FakePlayer()
@@ -170,7 +170,7 @@ def test_visual_alarm_works_without_sound() -> None:
     assert status.popup_should_show      # o aviso visual continua igual
     assert not player.playing            # mas nada e reproduzido
     assert player.start_calls == 0
-    assert not status.sound_enabled      # UI usa isso para esconder "Silence"
+    assert not status.sound_enabled      # the UI uses this to hide the button
 
 
 def test_sound_disabled_never_plays_across_cycles() -> None:
@@ -187,17 +187,17 @@ def test_sound_enabled_by_default_still_plays() -> None:
     assert status.sound_enabled
 
 
-# -- Momento critico: programa rodando (campo Iso lines) -------------------
+# -- Critical moment: program running (Iso lines field) -------------------
 
 def test_running_with_critical_off_alerts() -> None:
-    """Programa rodando e Vacuum1 OFF -> vermelho."""
+    """Program running with Vacuum1 OFF -> alert."""
     decision = ENGINE.evaluate(_result(PumpState.ON, PumpState.OFF, "4986_P4.CNC", RunPhase.RUNNING))
     assert decision.level is AlertLevel.WARNING
     assert "Vacuum1" in decision.reason
 
 
 def test_running_with_critical_not_visible_is_warning() -> None:
-    """Menu rolado: nao da para verificar -> laranja, nunca silencio."""
+    """Menu scrolled: cannot verify -> alert, never silence."""
     decision = ENGINE.evaluate(
         _result(PumpState.ON, PumpState.NOT_VISIBLE, "4986_P4.CNC", RunPhase.RUNNING)
     )
@@ -206,7 +206,7 @@ def test_running_with_critical_not_visible_is_warning() -> None:
 
 
 def test_running_with_critical_unknown_is_warning() -> None:
-    """Visivel mas ilegivel tambem e 'nao verificado'."""
+    """Visible but unreadable also counts as 'not verified'."""
     decision = ENGINE.evaluate(
         _result(PumpState.ON, PumpState.UNKNOWN, "4986_P4.CNC", RunPhase.RUNNING)
     )
@@ -219,31 +219,31 @@ def test_running_with_critical_on_is_silent() -> None:
 
 
 def test_standby_stays_silent_even_with_vacuum_off() -> None:
-    """Maquina parada com vacuo desligado e normal - nao pode alarmar."""
+    """An idle machine with the vacuum off is normal - it must not alarm."""
     decision = ENGINE.evaluate(_result(PumpState.OFF, PumpState.OFF, "4986_P4.CNC", RunPhase.IDLE))
     assert decision.level is AlertLevel.NONE
 
 
 def test_critical_indicator_name_matches_ignoring_spaces() -> None:
-    """'Vacuum 1' no config deve casar com 'Vacuum1' lido da tela (e vice-versa)."""
+    """'Vacuum 1' in config must match 'Vacuum1' read from screen, and back."""
     engine = RuleEngine([], critical_indicator="Vacuum 1")
     decision = engine.evaluate(_result(PumpState.ON, PumpState.OFF, "X.CNC", RunPhase.RUNNING))
     assert decision.level is AlertLevel.WARNING
 
 
 def test_missing_critical_indicator_is_warning_not_silence() -> None:
-    """Indicador critico ausente da config nao pode virar 'tudo certo'."""
+    """A critical indicator missing from the config must not read as 'all fine'."""
     engine = RuleEngine([], critical_indicator="Vacuum 9")
     decision = engine.evaluate(_result(PumpState.ON, PumpState.ON, "X.CNC", RunPhase.RUNNING))
     assert decision.level is AlertLevel.WARNING
 
 
-# -- botoes liberam a tela e a acao fica registrada ------------------------
+# -- the button frees the screen and the action is recorded ---------------
 #
-# O popup cobre a tela do OSAI: mantido ate a condicao cessar, impedia o
-# operador de resolver a propria condicao do alarme. Agora o clique dispensa
-# o aviso - e a contrapartida e o registro, porque sem o popup na tela essa
-# linha e a unica prova de que alguem viu.
+# The popup covers the OSAI screen: kept until the condition cleared, it
+# stopped the operator from resolving the very condition. The click now
+# dismisses it - and the trade-off is the record, because with no popup on
+# screen that line is the only proof anyone saw it.
 
 class FakeActionLog:
     def __init__(self) -> None:
@@ -266,7 +266,7 @@ def test_acknowledge_takes_the_popup_off_the_screen() -> None:
     controller.acknowledge()
     status = controller.update(ALARM)  # condicao ainda existe no ciclo seguinte
 
-    assert not status.popup_should_show  # tela liberada para operar
+    assert not status.popup_should_show  # screen freed to operate
     assert status.snoozed
 
 
@@ -290,7 +290,7 @@ def test_clicking_without_an_active_alarm_records_nothing() -> None:
 
 
 def test_resolving_the_condition_cancels_the_snooze() -> None:
-    """Vacuo religado: nao ha o que silenciar, e um novo alarme avisa na hora."""
+    """Vacuum back on: nothing to silence, and a new alarm warns at once."""
     controller, player, _ = _controller_with_log()
     start = datetime(2026, 8, 30, 10, 0, 0)
     controller.update(ALARM, start)
@@ -303,7 +303,7 @@ def test_resolving_the_condition_cancels_the_snooze() -> None:
 
 
 def test_a_new_alarm_after_clearing_shows_again() -> None:
-    """Dispensar nao pode valer para o proximo evento."""
+    """Dismissing must not carry over to the next event."""
     controller, _, _ = _controller_with_log()
     controller.update(ALARM)
     controller.acknowledge()

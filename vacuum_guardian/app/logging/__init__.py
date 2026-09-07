@@ -1,4 +1,4 @@
-"""Configuracao central do loguru e trilha de auditoria."""
+"""Central loguru setup and the audit trails."""
 
 from .detection_log import AlarmActionLog, DetectionLog, OverrideLog
 from .setup import setup_logging

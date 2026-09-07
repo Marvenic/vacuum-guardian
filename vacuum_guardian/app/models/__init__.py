@@ -1,4 +1,4 @@
-"""Modelos de dados centrais (sem dependencia de UI ou de servicos)."""
+"""Core data models (no UI and no service dependencies)."""
 
 from .core import (
     AlarmDecision,

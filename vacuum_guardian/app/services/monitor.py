@@ -1,8 +1,8 @@
-"""MonitorEngine: orquestra um ciclo completo captura -> deteccao -> regras -> alarme.
+"""MonitorEngine: one full cycle of capture -> detection -> rules -> alarm.
 
-Sem nenhuma dependencia de Qt: a UI (ou um teste) chama run_cycle() no ritmo
-que quiser e recebe um CycleOutcome pronto para exibir. Isso mantem toda a
-sequencia de negocio testavel e reaproveitavel (ex.: modo headless futuro).
+No Qt dependency: the UI (or a test) calls run_cycle() at whatever pace it
+likes and gets a CycleOutcome ready to display. That keeps the whole
+business sequence testable and reusable (a headless mode, for instance).
 """
 
 from __future__ import annotations
@@ -23,10 +23,11 @@ from ..models import AlarmDecision, AppConfig, DetectionResult, PumpState, RunPh
 from ..utils import resource_path
 from ..vision.ocr import TextReader
 from .rule_engine import RuleEngine
+from .telemetry import TelemetryService
 
 
 class NullReader:
-    """TextReader inerte, usado se o OCR nativo indisponivel (app sobe mesmo assim)."""
+    """Inert TextReader used when native OCR is missing (the app still starts)."""
 
     def read_text(self, roi_bgr) -> str:  # type: ignore[no-untyped-def]
         return ""
@@ -34,12 +35,12 @@ class NullReader:
 
 @dataclass(frozen=True)
 class CycleOutcome:
-    """Tudo que a UI precisa para atualizar uma iteracao do painel."""
+    """Everything the UI needs to refresh one iteration of the panel."""
 
     result: DetectionResult
     decision: AlarmDecision
     alarm: AlarmStatus
-    window_title: str | None  # None = fallback de tela inteira
+    window_title: str | None  # None = full-screen fallback
     fps: float
 
 
@@ -47,7 +48,7 @@ class MonitorEngine:
     def __init__(self, config: AppConfig, project_root: Path) -> None:
         self._config = config
         self._root = project_root
-        # Templates sao gravados pela calibracao -> pasta gravavel ao lado do .exe.
+        # Templates are written by calibration -> writable folder beside the .exe.
         templates_dir = project_root / "assets" / "templates"
         templates_dir.mkdir(parents=True, exist_ok=True)
 
@@ -69,7 +70,7 @@ class MonitorEngine:
             iso_watcher=IsoLineWatcher(config.close_doors_keyword) if config.iso_roi else None,
             iso_roi=config.iso_roi,
         )
-        # Sem a area "Iso lines" calibrada nao existe gatilho: o app roda,
+        # With no calibrated "Iso lines" area there is no trigger: the app runs,
         # mostra os indicadores e NUNCA alarma. Falhar em silencio num app
         # de seguranca e inaceitavel - registra alto e claro.
         self.trigger_ready = bool(config.iso_roi and config.iso_roi.is_valid())
@@ -79,9 +80,9 @@ class MonitorEngine:
                 "Run the calibration wizard and capture the Iso lines area."
             )
         self._rules = RuleEngine(config.trigger_programs, config.critical_indicator)
-        # O WAV padrao e recurso EMPACOTADO (fica em _internal/ no executavel),
-        # enquanto os templates sao GRAVAVEIS e ficam ao lado do .exe - por isso
-        # os dois caminhos sao resolvidos de formas diferentes.
+        # The default WAV is a BUNDLED resource (it lives in _internal/ in the
+        # executable), while templates are WRITABLE and sit beside the .exe - so
+        # the two paths are resolved differently.
         wav = Path(config.alarm_wav) if config.alarm_wav else resource_path("assets/alarm.wav")
         if not config.alarm_sound_enabled:
             logger.info("Alarm sound disabled in settings - visual alarm only")
@@ -95,31 +96,32 @@ class MonitorEngine:
             config.alarm_sound_enabled,
             AlarmActionLog(project_root / "logs" / "alarm_actions.csv"),
         )
+        self.telemetry = TelemetryService(config, project_root)
         self._detection_log = DetectionLog(project_root / "logs" / "detections.csv")
         self._override_log = OverrideLog(project_root / "logs" / "overrides.csv")
         self._last_phase = RunPhase.IDLE
         self._last_cycle: float | None = None
         self._fps = 0.0
-        # Retangulo (em coords de TELA) de uma janela nossa que esteja
-        # cobrindo o OSAI. A UI informa; o ciclo usa para nao ler os
-        # proprios pixels do popup de alarme.
+        # Rectangle (in SCREEN coordinates) of one of our own windows that is
+        # covering OSAI. The UI reports it; the cycle uses it to avoid reading
+        # the alarm popup's own pixels.
         self._occlusion: tuple[int, int, int, int] | None = None
 
     def set_occlusion(self, rect: tuple[int, int, int, int] | None) -> None:
-        """Informa que uma janela do proprio app cobre a tela (x, y, w, h).
+        """Reports that one of our windows covers the screen (x, y, w, h).
 
-        Chamado pela UI ao exibir/esconder o popup de alarme. Atribuicao
-        simples de proposito: e lido pela thread de monitoramento e uma
-        leitura desatualizada por um ciclo nao causa dano.
+        Called by the UI when the alarm popup is shown or hidden. A plain
+        assignment: there is no dangerous race between the threads here, and a
+        reading that is one cycle stale does no harm.
         """
         self._occlusion = rect
 
     def _iso_is_covered(self, window) -> bool:  # type: ignore[no-untyped-def]
-        """A ROI do campo Iso lines esta debaixo de uma janela nossa?"""
+        """Is the Iso lines ROI underneath one of our own windows?"""
         roi = self._config.iso_roi
         if self._occlusion is None or roi is None or not roi.is_valid():
             return False
-        # ROI e relativa ao frame capturado; converte para coords de tela.
+        # The ROI is relative to the captured frame; convert to screen coords.
         offset_x, offset_y = (window.left, window.top) if window else (0, 0)
         left, top = roi.x + offset_x, roi.y + offset_y
         right, bottom = left + roi.width, top + roi.height
@@ -131,10 +133,10 @@ class MonitorEngine:
         return self._config
 
     def run_cycle(self) -> CycleOutcome:
-        """Executa um ciclo; nunca lanca excecao (loga e devolve estado neutro via UNKNOWN)."""
+        """Runs one cycle; never raises (logs and returns a neutral UNKNOWN state)."""
         now = time.perf_counter()
         if self._last_cycle is not None and now > self._last_cycle:
-            # Media movel simples para o FPS nao "pular" a cada ciclo.
+            # Simple moving average so the FPS figure does not jump every cycle.
             instant = 1.0 / (now - self._last_cycle)
             self._fps = instant if self._fps == 0.0 else (self._fps * 0.7 + instant * 0.3)
         self._last_cycle = now
@@ -144,6 +146,11 @@ class MonitorEngine:
         decision = self._rules.evaluate(result)
         alarm_status = self.alarm.update(decision)
         self._detection_log.record(result, decision)  # grava apenas transicoes
+        # Usage report counters (only ever sent with consent).
+        self.telemetry.note_cycle(window is not None)
+        if alarm_status.popup_should_show:
+            self.telemetry.note_alarm()
+        self.telemetry.maybe_send()
         self._record_override(result)
 
         logger.debug(
@@ -164,11 +171,11 @@ class MonitorEngine:
         )
 
     def _record_override(self, result: DetectionResult) -> None:
-        """Grava o momento em que o operador partiu com o vacuo fora de ON.
+        """Records the moment the operator started with the vacuum not ON.
 
-        So na TRANSICAO DOORS -> RUNNING: e ali que ele viu o aviso e seguiu
-        assim mesmo. Depois disso o alarme continua, mas o evento ja foi
-        registrado - o gerente quer um evento por partida, nao um por ciclo.
+        Only on the DOORS -> RUNNING transition: that is where the warning was
+        seen and ignored. The alarm keeps going afterwards, but the event is
+        already recorded - a manager wants one event per start, not per cycle.
         """
         previous, current = self._last_phase, result.run_phase
         self._last_phase = current
@@ -178,13 +185,14 @@ class MonitorEngine:
         reading = result.indicators.get(critical)
         state = reading.state if reading is not None else PumpState.NOT_VISIBLE
         if state is PumpState.ON:
-            return  # partiu com o vacuo ligado: nada a registrar
+            return  # started with the vacuum on: nothing to record
+        self.telemetry.note_override()
         self._override_log.record(
             result.timestamp, result.program_name, critical, state.value
         )
 
     def grab_frame(self):  # type: ignore[no-untyped-def]
-        """Frame avulso para a tela de calibracao (np.ndarray BGR)."""
+        """A one-off frame for the calibration screen (BGR np.ndarray)."""
         frame, _ = self._capture.grab()
         return frame
 

@@ -1,9 +1,9 @@
-"""Gatilho pelo campo Iso lines: aviso no CLOSE THE DOORS, vermelho ao partir.
+"""The Iso lines trigger: warn on CLOSE THE DOORS, alert once it starts.
 
-Fluxo real da maquina:
-    stand-by            -> texto irrelevante
-    arquivo carregado   -> "CLOSE THE DOORS"   -> conferir o Vacuum 1 (laranja)
-    operador iniciou    -> o texto muda        -> vermelho, e fica registrado
+The real machine flow:
+    stand-by          -> irrelevant text
+    file loaded       -> "CLOSE THE DOORS"  -> check Vacuum 1
+    operator started  -> the text changes   -> alert, and it is recorded
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ _CODE = "#(WOS,{PROTEZIONI_MAG_1_APERTE}= {TRUE})"
 _STANDBY = "(ENDIF) M3 SE209 E209=E209+E208"
 
 
-# -- leitura do campo Iso lines -------------------------------------------
+# -- reading the Iso lines field -------------------------------------------
 
 def test_standby_text_is_not_a_trigger() -> None:
     watcher = IsoLineWatcher()
@@ -48,7 +48,7 @@ def test_text_changing_after_the_warning_means_the_program_started() -> None:
 
 
 def test_warning_repeated_does_not_count_as_started() -> None:
-    """OCR le a mesma tela varias vezes por segundo - isso nao e uma partida."""
+    """OCR reads the same screen many times a second - that is not a start."""
     watcher = IsoLineWatcher()
     watcher.update(_DOORS)
     for _ in range(5):
@@ -56,12 +56,12 @@ def test_warning_repeated_does_not_count_as_started() -> None:
 
 
 def test_singular_close_the_door_also_matches() -> None:
-    """O OCR pode perder o S final; a palavra-chave e o singular de proposito."""
+    """OCR may drop the final S; the keyword is singular on purpose."""
     assert IsoLineWatcher().update("CLOSE THE DOOR") is RunPhase.DOORS
 
 
 def test_change_without_a_previous_warning_is_ignored() -> None:
-    """Rolar o codigo em stand-by nao pode virar 'programa rodando'."""
+    """Scrolling code on stand-by must not become 'program running'."""
     watcher = IsoLineWatcher()
     watcher.update(_STANDBY)
     assert watcher.update(_CODE) is RunPhase.IDLE
@@ -74,7 +74,7 @@ def test_empty_field_returns_to_standby() -> None:
     assert watcher.update("") is RunPhase.IDLE
 
 
-# -- severidade ------------------------------------------------------------
+# -- severity --------------------------------------------------------------
 
 ENGINE = RuleEngine([], critical_indicator="Vacuum 1")
 
@@ -90,7 +90,7 @@ def _result(state: PumpState, phase: RunPhase) -> DetectionResult:
 
 
 def test_doors_with_vacuum_off_is_a_warning_not_red() -> None:
-    """Ainda da tempo de ligar: avisar sem gritar."""
+    """There is still time to switch it on: warn without shouting."""
     decision = ENGINE.evaluate(_result(PumpState.OFF, RunPhase.DOORS))
     assert decision.level is AlertLevel.WARNING
     assert "CLOSE THE DOORS" in decision.reason
@@ -106,7 +106,7 @@ def test_doors_with_unreadable_vacuum_warns() -> None:
 
 
 def test_running_with_vacuum_off_alerts() -> None:
-    """Ignorou o aviso e cortou: vermelho."""
+    """Ignored the warning and cut anyway."""
     decision = ENGINE.evaluate(_result(PumpState.OFF, RunPhase.RUNNING))
     assert decision.level is AlertLevel.WARNING
     assert "STOP THE MACHINE" in decision.reason
@@ -117,7 +117,7 @@ def test_running_with_vacuum_on_is_silent() -> None:
 
 
 def test_running_with_unreadable_vacuum_warns_but_is_not_red() -> None:
-    """Nao consegui ler nao e prova de desligado - laranja, nunca silencio."""
+    """Could not read is not proof of off - alert, never silence."""
     decision = ENGINE.evaluate(_result(PumpState.UNKNOWN, RunPhase.RUNNING))
     assert decision.level is AlertLevel.WARNING
 
@@ -126,7 +126,7 @@ def test_idle_never_alarms() -> None:
     assert ENGINE.evaluate(_result(PumpState.OFF, RunPhase.IDLE)).level is AlertLevel.NONE
 
 
-# -- registro para o gerente ----------------------------------------------
+# -- the record for the manager --------------------------------------------
 
 def _rows(path: Path) -> list[list[str]]:
     with path.open(encoding="utf-8-sig") as handle:
@@ -153,10 +153,10 @@ def test_header_is_not_duplicated_between_runs(tmp_path: Path) -> None:
     assert len(_rows(path)) == 1
 
 
-# -- ponta a ponta: o motor grava o override -------------------------------
+# -- end to end: the engine writes the override ----------------------------
 
 def test_engine_records_one_override_per_start(tmp_path: Path) -> None:
-    """Um evento por partida - nao um por ciclo enquanto o alarme toca."""
+    """One event per start - not one per cycle while the alarm sounds."""
     from app.models import AppConfig
     from app.services.monitor import MonitorEngine
 
@@ -165,13 +165,13 @@ def test_engine_records_one_override_per_start(tmp_path: Path) -> None:
     def cycle(phase: RunPhase, state: PumpState) -> None:
         engine._record_override(_result(state, phase))
 
-    cycle(RunPhase.DOORS, PumpState.OFF)      # aviso na tela, vacuo desligado
-    cycle(RunPhase.RUNNING, PumpState.OFF)    # partiu assim mesmo -> registra
+    cycle(RunPhase.DOORS, PumpState.OFF)      # warning on screen, vacuum off
+    cycle(RunPhase.RUNNING, PumpState.OFF)    # started anyway -> recorded
     for _ in range(5):
-        cycle(RunPhase.RUNNING, PumpState.OFF)  # alarme seguindo: nao repete
+        cycle(RunPhase.RUNNING, PumpState.OFF)  # alarm continues: no repeat
 
     rows = _rows(tmp_path / "logs" / "overrides.csv")
-    assert len(rows) == 2  # cabecalho + 1 evento
+    assert len(rows) == 2  # header + one event
     assert rows[1][3] == "Vacuum 1"
 
 
@@ -183,4 +183,4 @@ def test_engine_does_not_record_when_the_vacuum_was_on(tmp_path: Path) -> None:
     engine._record_override(_result(PumpState.ON, RunPhase.DOORS))
     engine._record_override(_result(PumpState.ON, RunPhase.RUNNING))
 
-    assert len(_rows(tmp_path / "logs" / "overrides.csv")) == 1  # so o cabecalho
+    assert len(_rows(tmp_path / "logs" / "overrides.csv")) == 1  # header only

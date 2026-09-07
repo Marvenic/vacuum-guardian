@@ -1,6 +1,6 @@
-"""Testes da leitura tolerante a rolagem (IndicatorFinder).
+"""Tests for scroll-tolerant reading (IndicatorFinder).
 
-Cenario simulado: uma "tela" onde a linha do indicador aparece em alturas
+Simulated scenario: a "screen" where the indicator row appears at different
 diferentes (o menu do OSAI rola) e, as vezes, nem aparece.
 """
 
@@ -15,7 +15,7 @@ import pytest
 from app.models import PumpState, ToggleGeometry
 from app.vision.finder import IndicatorFinder, blue_fraction
 
-# Layout sintetico de uma linha: [rotulo 60x14][espaco 10][toggle 40x14]
+# Synthetic row layout: [label 60x14][gap 10][toggle 40x14]
 _LABEL_W, _LABEL_H = 60, 14
 _TOGGLE_W, _TOGGLE_H = 40, 14
 _GAP = 10
@@ -26,14 +26,14 @@ _WHITE = (245, 245, 245)
 
 
 def _label_image() -> np.ndarray:
-    """Rotulo com textura fixa - o que o matchTemplate vai procurar."""
+    """A label with fixed texture - what matchTemplate will look for."""
     label = np.full((_LABEL_H, _LABEL_W, 3), 230, np.uint8)
     cv2.putText(label, "Vacuum 1", (2, 11), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (40, 40, 40), 1)
     return label
 
 
 def _toggle_image(on: bool) -> np.ndarray:
-    """ON = pill quase todo azul; OFF = branco com um circulo azul pequeno."""
+    """ON = a mostly blue pill; OFF = white with a small blue circle."""
     if on:
         toggle = np.full((_TOGGLE_H, _TOGGLE_W, 3), _BLUE, np.uint8)
         cv2.circle(toggle, (_TOGGLE_W - 7, _TOGGLE_H // 2), 5, _WHITE, -1)
@@ -44,7 +44,7 @@ def _toggle_image(on: bool) -> np.ndarray:
 
 
 def _screen(row_y: int | None, on: bool = True, height: int = 300, width: int = 400) -> np.ndarray:
-    """Tela com a linha em `row_y`; row_y=None simula o item rolado para fora."""
+    """Screen with the row at `row_y`; row_y=None means scrolled out of view."""
     screen = np.full((height, width, 3), 250, np.uint8)
     # Ruido determinstico para o matchTemplate ter contexto realista.
     cv2.rectangle(screen, (0, 0), (width - 1, 40), (210, 210, 210), -1)
@@ -58,7 +58,7 @@ def _screen(row_y: int | None, on: bool = True, height: int = 300, width: int = 
 
 @pytest.fixture()
 def calibrated(tmp_path: Path) -> Path:
-    """Grava rotulo e amostras ON/OFF como a calibracao faria."""
+    """Writes the label and ON/OFF samples the way calibration would."""
     cv2.imwrite(str(tmp_path / "vacuum_1_label.png"), _label_image())
     cv2.imwrite(str(tmp_path / "vacuum_1_toggle_on.png"), _toggle_image(True))
     cv2.imwrite(str(tmp_path / "vacuum_1_toggle_off.png"), _toggle_image(False))
@@ -85,7 +85,7 @@ def test_blue_fraction_separates_on_from_off() -> None:
 
 @pytest.mark.parametrize("row_y", [50, 120, 200, 260])
 def test_reads_on_at_any_scroll_position(calibrated: Path, row_y: int) -> None:
-    """O menu rolou: o estado tem de ser lido do mesmo jeito."""
+    """The menu scrolled: the state must still be read the same way."""
     result = _finder(calibrated).read(_screen(row_y, on=True))
     assert result.state is PumpState.ON
 
@@ -104,7 +104,7 @@ def test_absent_label_is_not_visible_never_on(calibrated: Path) -> None:
 
 
 def test_missing_label_template_is_not_visible(tmp_path: Path) -> None:
-    """Sem calibracao nao se inventa leitura."""
+    """With no calibration, no reading is invented."""
     finder = IndicatorFinder(tmp_path / "ausente.png", _TOGGLE, 0.75)
     assert not finder.ready
     assert finder.read(_screen(100)).state is PumpState.NOT_VISIBLE
@@ -118,7 +118,7 @@ def test_toggle_outside_frame_is_not_visible(calibrated: Path) -> None:
 
 
 def test_works_without_colour_samples(tmp_path: Path) -> None:
-    """Sem amostras, cai nos limiares padrao - mas ainda distingue os estados."""
+    """With no samples it falls back to default thresholds - still telling them apart."""
     cv2.imwrite(str(tmp_path / "vacuum_1_label.png"), _label_image())
     finder = IndicatorFinder(tmp_path / "vacuum_1_label.png", _TOGGLE, 0.75)
     assert finder.read(_screen(80, on=True)).state is PumpState.ON
@@ -128,7 +128,7 @@ def test_works_without_colour_samples(tmp_path: Path) -> None:
 # -- busca rapida (cache da ultima posicao) --------------------------------
 
 def _count_matches(monkeypatch) -> list[tuple[int, int]]:
-    """Registra o TAMANHO de cada imagem passada ao matchTemplate."""
+    """Records the SIZE of every image handed to matchTemplate."""
     import app.vision.finder as finder_module
 
     sizes: list[tuple[int, int]] = []
@@ -143,7 +143,7 @@ def _count_matches(monkeypatch) -> list[tuple[int, int]]:
 
 
 def test_second_read_searches_only_around_the_last_position(calibrated: Path, monkeypatch) -> None:
-    """O ganho de desempenho: varrer a tela toda uma vez, depois so a vizinhanca."""
+    """The performance win: scan the whole screen once, then only nearby."""
     finder = _finder(calibrated)
     screen = _screen(120, on=True)
     finder.read(screen)  # primeira leitura: varredura completa
@@ -157,21 +157,21 @@ def test_second_read_searches_only_around_the_last_position(calibrated: Path, mo
 
 
 def test_small_scroll_stays_on_the_fast_path(calibrated: Path) -> None:
-    """Rolar poucas linhas nao pode custar uma varredura completa."""
+    """Scrolling a few rows must not cost a full scan."""
     finder = _finder(calibrated)
     finder.read(_screen(120, on=True))
     assert finder.read(_screen(150, on=False)).state is PumpState.OFF
 
 
 def test_large_scroll_falls_back_to_the_full_search(calibrated: Path) -> None:
-    """Fora da janela rapida, ainda tem de encontrar - a rolagem e o motivo do modo."""
+    """Outside the fast window it must still find it - scrolling is the whole point."""
     finder = _finder(calibrated)
     finder.read(_screen(50, on=True))
     assert finder.read(_screen(260, on=True)).state is PumpState.ON
 
 
 def test_cache_is_cleared_when_the_item_disappears(calibrated: Path) -> None:
-    """Sumindo da tela, a proxima busca precisa varrer tudo de novo."""
+    """Once it leaves the screen, the next search must scan everything again."""
     finder = _finder(calibrated)
     finder.read(_screen(120, on=True))
     assert finder.read(_screen(None)).state is PumpState.NOT_VISIBLE

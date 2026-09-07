@@ -1,9 +1,9 @@
-"""Teste de ponta a ponta do assistente de calibracao.
+"""End-to-end test of the calibration wizard.
 
-Vale mais que testar cada botao isolado: percorre os quatro passos na ordem em
-que o operador os ve e, no fim, monta o IndicatorFinder com os arquivos
-gerados. Se o assistente produzir algo que o detector nao consegue usar, o
-teste falha - que e exatamente o modo de falha que apareceu na fabrica.
+Worth more than testing each button in isolation: it walks the four steps in
+the order the operator sees them and then builds an IndicatorFinder from the
+files produced. If the wizard makes something the detector cannot use, the
+test fails - which is exactly the failure seen at the factory.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from app.ui.roi_selector import RoiSelectorDialog  # noqa: E402
 from app.detection.service import build_finders  # noqa: E402
 from app.vision.finder import IndicatorFinder  # noqa: E402
 
-# Linha sintetica: [rotulo 60x14][espaco 10][toggle 40x14] em (20, row_y).
+# Synthetic row: [label 60x14][gap 10][toggle 40x14] at (20, row_y).
 _LABEL_W, _LABEL_H = 60, 14
 _TOGGLE_W, _TOGGLE_H = 40, 14
 _ROW_X, _GAP = 20, 10
@@ -55,7 +55,7 @@ def _toggle_image(on: bool) -> np.ndarray:
 
 
 def _screen(row_y: int, on: bool) -> np.ndarray:
-    """Frame pequeno de proposito: mantem a escala em 1.0 e simplifica as coords."""
+    """Deliberately small frame: keeps the scale at 1.0 and simplifies coords."""
     screen = np.full((300, 400, 3), 250, np.uint8)
     cv2.rectangle(screen, (0, 0), (399, 40), (210, 210, 210), -1)
     screen[row_y : row_y + _LABEL_H, _ROW_X : _ROW_X + _LABEL_W] = _label_image()
@@ -66,10 +66,10 @@ def _screen(row_y: int, on: bool) -> np.ndarray:
 
 @pytest.fixture(autouse=True)
 def _no_modal_boxes(monkeypatch):  # type: ignore[no-untyped-def]
-    """Caixas modais travam (ou derrubam) a suite headless.
+    """Modal boxes hang (or crash) a headless suite.
 
-    Elas sao o comportamento certo do produto - o operador precisa ver o
-    aviso -, entao apenas as silenciamos no teste em vez de remove-las.
+    They are the right product behaviour - the operator must see the warning -
+    so the test silences them instead of removing them.
     """
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: QMessageBox.Ok))
     monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: QMessageBox.Ok))
@@ -77,7 +77,7 @@ def _no_modal_boxes(monkeypatch):  # type: ignore[no-untyped-def]
 
 @pytest.fixture()
 def setup(qt_app, tmp_path: Path):  # type: ignore[no-untyped-def]
-    """Dialogo com um 'monitor' controlavel: o teste decide o que a foto mostra."""
+    """Dialog with a controllable 'monitor': the test decides what is captured."""
     config = AppConfig(
         indicators=[IndicatorConfig("Vacuum Pump 1"), IndicatorConfig("Vacuum 1")],
         critical_indicator="Vacuum 1",
@@ -90,18 +90,18 @@ def setup(qt_app, tmp_path: Path):  # type: ignore[no-untyped-def]
 
 
 def _drag(dialog: RoiSelectorDialog, x: int, y: int, w: int, h: int) -> None:
-    """Simula o arrasto do operador sobre a imagem (escala 1.0 neste frame)."""
+    """Simulates the operator's drag over the image (scale 1.0 in this frame)."""
     dialog._label.selection = QRect(x, y, w, h)
 
 
 def test_wizard_starts_on_the_first_step(setup) -> None:  # type: ignore[no-untyped-def]
     dialog, _, _, _ = setup
-    # Comeca pelo PRIMEIRO indicador da lista, nao pelo critico.
+    # It starts on the FIRST indicator in the list, not the critical one.
     assert dialog._guide.current_step().anchor == "label@vacuum_pump_1"
 
 
 def test_full_calibration_produces_a_working_detector(setup) -> None:  # type: ignore[no-untyped-def]
-    """O que importa: no fim, o detector le ON e OFF corretamente."""
+    """What matters: in the end the detector reads ON and OFF correctly."""
     dialog, config, templates, screen = setup
     row_y = 80
 
@@ -126,13 +126,13 @@ def test_full_calibration_produces_a_working_detector(setup) -> None:  # type: i
         templates / "vacuum_1_toggle_off.png",
     )
     assert finder.ready
-    # E funciona com o menu rolado para outra altura - o objetivo do modo.
+    # And it works with the menu scrolled elsewhere - the point of the mode.
     assert finder.read(_screen(200, on=True)).state is PumpState.ON
     assert finder.read(_screen(200, on=False)).state is PumpState.OFF
 
 
 def test_toggle_geometry_is_relative_to_the_label(setup) -> None:  # type: ignore[no-untyped-def]
-    """Deslocamento, nao coordenada fixa - senao a rolagem quebraria tudo."""
+    """An offset, not a fixed coordinate - scrolling would break the latter."""
     dialog, config, _, _ = setup
     row_y = 80
     _drag(dialog, _ROW_X, row_y, _LABEL_W, _LABEL_H)
@@ -147,7 +147,7 @@ def test_toggle_geometry_is_relative_to_the_label(setup) -> None:  # type: ignor
 
 
 def test_capture_without_a_drag_fails_and_does_not_advance(setup) -> None:  # type: ignore[no-untyped-def]
-    """Sem retangulo nao ha captura - e o assistente nao pode fingir progresso."""
+    """No rectangle means no capture - and the wizard must not fake progress."""
     dialog, _, _, _ = setup
     dialog._label.clear_selection()
     step_before = dialog._guide.current_step().anchor
@@ -156,7 +156,7 @@ def test_capture_without_a_drag_fails_and_does_not_advance(setup) -> None:  # ty
 
 
 def test_sample_before_toggle_area_is_refused(setup) -> None:  # type: ignore[no-untyped-def]
-    """Fora de ordem nao pode gerar amostra de uma area que ninguem definiu."""
+    """Out of order must not sample an area nobody has defined yet."""
     dialog, _, templates, _ = setup
     _drag(dialog, _ROW_X, 80, _LABEL_W, _LABEL_H)
     dialog._run_step(REQ_LABEL)
@@ -165,17 +165,17 @@ def test_sample_before_toggle_area_is_refused(setup) -> None:  # type: ignore[no
 
 
 def test_successful_capture_advances_the_wizard(setup) -> None:  # type: ignore[no-untyped-def]
-    """A acao roda pelo assistente: sucesso avanca sozinho para o proximo passo."""
+    """The action runs through the wizard: success advances by itself."""
     dialog, _, _, _ = setup
     _drag(dialog, _ROW_X, 80, _LABEL_W, _LABEL_H)
-    # Comeca pelo PRIMEIRO indicador da lista, nao pelo critico.
+    # It starts on the FIRST indicator in the list, not the critical one.
     assert dialog._guide.current_step().anchor == "label@vacuum_pump_1"
     dialog._guide._run_action()
     assert dialog._guide.current_step().anchor == "toggle@vacuum_pump_1"
 
 
 def test_calibration_marks_the_dialog_as_changed(setup) -> None:  # type: ignore[no-untyped-def]
-    """MainWindow so salva e reinicia o monitor se `changed` for True."""
+    """MainWindow only saves and restarts the monitor when `changed` is True."""
     dialog, _, _, _ = setup
     assert not dialog.changed
     _drag(dialog, _ROW_X, 80, _LABEL_W, _LABEL_H)
@@ -185,13 +185,13 @@ def test_calibration_marks_the_dialog_as_changed(setup) -> None:  # type: ignore
 
 # -- dois indicadores ------------------------------------------------------
 #
-# Regressao do chao de fabrica: o assistente mandava capturar o Vacuum Pump 1,
-# mas gravava tudo no indicador critico (Vacuum 1). O Vacuum Pump 1 ficava sem
-# rotulo e sem amostras, e o painel dizia que nao conseguia ler o estado dele.
+# Shop-floor regression: the wizard asked for Vacuum Pump 1 but wrote
+# everything into the critical indicator (Vacuum 1). Vacuum Pump 1 was left
+# with no label and no samples, and the panel said it could not read it.
 
 
 def _two_row_screen(pump_on: bool, vacuum_on: bool) -> np.ndarray:
-    """Tela com DUAS linhas: 'Vacuum Pump 1' em cima, 'Vacuum 1' embaixo."""
+    """A screen with TWO rows: 'Vacuum Pump 1' on top, 'Vacuum 1' below."""
     screen = np.full((300, 400, 3), 250, np.uint8)
     cv2.rectangle(screen, (0, 0), (399, 40), (210, 210, 210), -1)
     for row_y, text, is_on in ((80, "Pump 1", pump_on), (140, "Vacuum 1", vacuum_on)):
@@ -217,7 +217,7 @@ def two_indicators(qt_app, tmp_path: Path):  # type: ignore[no-untyped-def]
 
 
 def _calibrate(dialog, screen, indicator: str, row_y: int, on_frame, off_frame) -> None:
-    """Roda os quatro passos de um indicador, como o assistente faz."""
+    """Runs one indicator's four steps, the way the wizard does."""
     _drag(dialog, _ROW_X, row_y, _LABEL_W, _LABEL_H)
     assert dialog._run_step(REQ_LABEL, indicator)
     _drag(dialog, _ROW_X + _LABEL_W + _GAP, row_y, _TOGGLE_W, _TOGGLE_H)
@@ -229,7 +229,7 @@ def _calibrate(dialog, screen, indicator: str, row_y: int, on_frame, off_frame) 
 
 
 def test_each_indicator_gets_its_own_files(two_indicators) -> None:  # type: ignore[no-untyped-def]
-    """O bug: capturar o Vacuum Pump 1 gravava nos arquivos do Vacuum 1."""
+    """The bug: capturing Vacuum Pump 1 wrote into Vacuum 1's files."""
     dialog, config, templates, screen = two_indicators
 
     _calibrate(
@@ -242,13 +242,13 @@ def test_each_indicator_gets_its_own_files(two_indicators) -> None:  # type: ign
     assert (templates / "vacuum_pump_1_toggle_on.png").exists()
     assert (templates / "vacuum_pump_1_toggle_off.png").exists()
     assert config.indicators[0].toggle is not None
-    # E nada pode ter vazado para o indicador critico.
+    # And nothing may have leaked into the critical indicator.
     assert not (templates / "vacuum_1_label.png").exists()
     assert config.indicators[1].toggle is None
 
 
 def test_both_indicators_end_up_readable(two_indicators) -> None:  # type: ignore[no-untyped-def]
-    """O que o operador vai conferir no painel: os DOIS passam a ser lidos."""
+    """What the operator checks on the panel: BOTH become readable."""
     dialog, config, templates, screen = two_indicators
 
     _calibrate(
@@ -275,25 +275,25 @@ def test_both_indicators_end_up_readable(two_indicators) -> None:  # type: ignor
 
 
 def test_wizard_walks_both_indicators_in_order(two_indicators) -> None:  # type: ignore[no-untyped-def]
-    """O roteiro comeca pelo Vacuum Pump 1 e so depois vai ao Vacuum 1."""
+    """The script starts with Vacuum Pump 1 and only then moves to Vacuum 1."""
     dialog, _, _, _ = two_indicators
     anchors = [s.anchor for s in dialog._guide._steps if s.indicator]
     assert anchors.index("label@vacuum_pump_1") < anchors.index("label@vacuum_1")
-    # E o passo atual manda no combo do topo, sem o operador ter de trocar.
+    # And the current step drives the combo, with no manual switching.
     assert dialog._guide.current_step().indicator == "Vacuum Pump 1"
     assert dialog._target.currentText() == "Vacuum Pump 1"
 
 
-# -- estado modal (o "congelou e nao deixa nem fechar") --------------------
+# -- modal state (the "it froze and will not even close" report) ----------
 
 def test_refresh_screenshot_does_not_end_the_modal_loop(setup) -> None:  # type: ignore[no-untyped-def]
-    """Capturar uma foto nova nao pode encerrar o exec_() da calibracao.
+    """Taking a fresh screenshot must not end calibration's exec_() loop.
 
     Bug real na CNC: `_refresh_frame` usava hide(), e hide() num dialogo dentro
     de exec_() encerra o loop modal na hora. O exec_() retornava no meio da
-    captura, o clique em Done nunca era processado, e sobrava um dialogo ainda
-    modal - com o Qt mantendo a janela principal DESABILITADA no Windows: nao
-    aceitava clique, nao movia, nao fechava.
+    capture the click on Done was never processed, and a still-modal dialog
+    was left behind, with Windows keeping the main window DISABLED: it took
+    no clicks, would not move and would not close.
     """
     from PySide2.QtCore import QTimer
     from PySide2.QtWidgets import QApplication
@@ -314,7 +314,7 @@ def test_refresh_screenshot_does_not_end_the_modal_loop(setup) -> None:  # type:
     dialog.exec_()
     order.append("exec_returned")
 
-    # O Done TEM de acontecer antes do exec_() devolver o controle.
+    # Done MUST happen before exec_() hands control back.
     assert order == ["refresh", "done", "exec_returned"]
     assert not dialog.isVisible()
     assert QApplication.activeModalWidget() is None  # nada de modal pendurado
@@ -323,7 +323,7 @@ def test_refresh_screenshot_does_not_end_the_modal_loop(setup) -> None:  # type:
 # -- roteamento por indicador ---------------------------------------------
 
 def test_target_combo_matches_the_opening_step(setup) -> None:  # type: ignore[no-untyped-def]
-    """O alvo tem de refletir o indicador do passo, ja na abertura.
+    """The target must reflect the step's indicator right from the start.
 
     Ficava preso no indicador critico ("Vacuum 1") enquanto o assistente
     mostrava instrucoes do "Vacuum Pump 1" - convite a calibrar o errado.
@@ -334,7 +334,7 @@ def test_target_combo_matches_the_opening_step(setup) -> None:  # type: ignore[n
 
 
 def test_wizard_writes_files_for_the_step_indicator(setup) -> None:  # type: ignore[no-untyped-def]
-    """Seguindo o assistente pelo botao verde, o Vacuum Pump 1 tem de ficar
+    """Following the wizard through the green button, Vacuum Pump 1 must end up
     calibrado NELE - nao no Vacuum 1."""
     dialog, config, templates, screen = setup
     row_y = 80
@@ -356,7 +356,7 @@ def test_wizard_writes_files_for_the_step_indicator(setup) -> None:  # type: ign
 
 
 def test_calibrated_indicator_is_actually_read(setup) -> None:  # type: ignore[no-untyped-def]
-    """Prova o sintoma relatado: depois de calibrado nao pode ficar 'UNREADABLE'."""
+    """Proves the reported symptom: once calibrated it must not stay UNREADABLE."""
     dialog, config, templates, screen = setup
     row_y = 80
     _drag(dialog, _ROW_X, row_y, _LABEL_W, _LABEL_H)
@@ -369,6 +369,6 @@ def test_calibrated_indicator_is_actually_read(setup) -> None:  # type: ignore[n
     dialog._guide._run_action()
 
     finders = build_finders(templates, config)
-    assert "Vacuum Pump 1" in finders, "nenhum leitor criado para o indicador calibrado"
+    assert "Vacuum Pump 1" in finders, "no reader built for the calibrated indicator"
     assert finders["Vacuum Pump 1"].read(_screen(row_y, on=True)).state is PumpState.ON
     assert finders["Vacuum Pump 1"].read(_screen(row_y, on=False)).state is PumpState.OFF

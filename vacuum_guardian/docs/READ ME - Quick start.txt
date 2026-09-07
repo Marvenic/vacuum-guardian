@@ -120,6 +120,20 @@ SOUND IS OPTIONAL
   depends on audio.
 
 ---------------------------------------------------------
+USAGE DATA (OPTIONAL)
+---------------------------------------------------------
+  The app can send an anonymous usage report so the makers know
+  which Windows versions and regions to support. It is OFF by
+  default and asks once, showing exactly what it would send.
+  It never sends screen contents, program names or file paths.
+
+  Company, name, email and phone are an OPTIONAL operator card -
+  fill them in only if you want to be contacted about the app.
+
+  To change your answer later: right-click the tray icon ->
+  "Usage data...".
+
+---------------------------------------------------------
 FILES CREATED (in this same folder)
 ---------------------------------------------------------
   config.json         -> the calibration. Back it up after calibrating!

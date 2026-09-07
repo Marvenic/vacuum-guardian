@@ -1,8 +1,8 @@
-"""Testes do guia de calibracao embutido.
+"""Tests for the embedded calibration guide.
 
-O valor do guia esta em duas coisas: o roteiro bater com os botoes reais e o
-"onde eu parei" refletir o que existe em disco - se ele mentir, o operador se
-perde exatamente como se perdia sem guia nenhum.
+The guide is worth having for two things: the script matching the real
+buttons, and the progress list reflecting what is on disk - if it lies, the
+operator gets lost exactly as they did with no guide at all.
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ def test_steps_exist_in_both_languages(language: str) -> None:
 
 
 def test_both_languages_share_the_same_skeleton() -> None:
-    """Trocar de idioma nao pode mudar a ordem nem o que cada passo produz."""
+    """Switching language must not change the order nor what each step makes."""
     english = build_steps(_NAMES, "en")
     portuguese = build_steps(_NAMES, "pt")
     assert [s.anchor for s in english] == [s.anchor for s in portuguese]
@@ -65,7 +65,7 @@ def test_both_languages_share_the_same_skeleton() -> None:
 
 
 def test_steps_are_in_the_order_the_buttons_must_be_pressed() -> None:
-    """Um indicador inteiro por vez, na ordem label -> toggle -> ON -> OFF."""
+    """One whole indicator at a time, in label -> toggle -> ON -> OFF order."""
     order = [s.requires for s in build_steps(_NAMES, "en") if s.requires]
     assert order == [
         progress_key("Vacuum Pump 1", REQ_LABEL),
@@ -76,12 +76,12 @@ def test_steps_are_in_the_order_the_buttons_must_be_pressed() -> None:
         progress_key("Vacuum 1", REQ_TOGGLE),
         progress_key("Vacuum 1", REQ_ON),
         progress_key("Vacuum 1", REQ_OFF),
-        REQ_ISO,  # area do Iso lines, depois dos indicadores
+        REQ_ISO,  # the Iso lines area, after the indicators
     ]
 
 
 def test_every_capture_step_knows_its_own_indicator() -> None:
-    """A causa do bug: o passo precisa carregar A QUEM ele pertence."""
+    """The cause of the bug: a step must carry WHO it belongs to."""
     for step in build_steps(_NAMES, "en"):
         if step.action in (REQ_LABEL, REQ_TOGGLE, REQ_ON, REQ_OFF):
             assert step.indicator in _NAMES
@@ -89,18 +89,18 @@ def test_every_capture_step_knows_its_own_indicator() -> None:
 
 
 def test_step_text_names_its_own_indicator() -> None:
-    """Passo do Vacuum Pump 1 nao pode falar de Vacuum 1 - era o que confundia."""
+    """A Vacuum Pump 1 step must not talk about Vacuum 1 - that was confusing."""
     for step in build_steps(_NAMES, "en"):
         if step.indicator == "Vacuum Pump 1":
             text = step.title + step.body
             assert "Vacuum Pump 1" in text
-            # "Vacuum 1" so pode aparecer como parte de "Vacuum Pump 1"
+            # "Vacuum 1" may only appear as part of "Vacuum Pump 1"
             assert "Vacuum 1" not in text.replace("Vacuum Pump 1", "")
 
 
 @pytest.mark.parametrize("language", LANGUAGES)
 def test_every_capture_step_has_an_action_button(language: str) -> None:
-    """Passo que captura algo precisa de um botao rotulado - senao nao ha o que clicar."""
+    """A capturing step needs a labelled button - otherwise there is nothing to click."""
     from app.ui.calibration_guide import _UI
 
     labels = _UI[language]["actions"]
@@ -111,7 +111,7 @@ def test_every_capture_step_has_an_action_button(language: str) -> None:
 
 
 def test_required_steps_all_carry_an_action() -> None:
-    """Nao pode existir passo obrigatorio sem forma de conclui-lo pelo assistente."""
+    """No required step may exist without a way to complete it in the wizard."""
     for step in build_steps(_NAMES, "en"):
         if step.requires and step.indicator:
             assert step.requires == progress_key(step.indicator, step.action)
@@ -120,7 +120,7 @@ def test_required_steps_all_carry_an_action() -> None:
 
 
 def test_sample_steps_do_not_ask_for_a_drag() -> None:
-    """As amostras ON/OFF sao automaticas: pedir retangulo confundiria de novo."""
+    """The ON/OFF samples are automatic: asking for a rectangle would confuse again."""
     steps = {s.anchor: s for s in build_steps(_NAMES, "en")}
     assert not steps["on@vacuum_1"].needs_selection
     assert not steps["off@vacuum_1"].needs_selection
@@ -161,7 +161,7 @@ def test_each_artifact_marks_its_own_step(tmp_path: Path) -> None:
 
 
 def test_progress_is_tracked_per_indicator(tmp_path: Path) -> None:
-    """Calibrar o Vacuum Pump 1 conta para ele - e nao marca o Vacuum 1."""
+    """Calibrating Vacuum Pump 1 counts for it - and does not mark Vacuum 1."""
     _touch(tmp_path, "vacuum_pump_1_label.png")
     done = calibration_status(_config(), tmp_path)[1]
     assert done == {progress_key("Vacuum Pump 1", REQ_LABEL)}
@@ -169,7 +169,7 @@ def test_progress_is_tracked_per_indicator(tmp_path: Path) -> None:
 
 
 def test_checklist_covers_every_indicator(tmp_path: Path) -> None:
-    """Com dois vacuos o operador precisa ver o progresso dos dois."""
+    """With two vacuums the operator must see progress for both."""
     items, _ = calibration_status(_config(), tmp_path)
     groups = {item.group for item in items if item.group}
     assert groups == {"Vacuum Pump 1", "Vacuum 1"}
@@ -193,9 +193,9 @@ def test_invalid_toggle_does_not_count_as_calibrated(tmp_path: Path) -> None:
 # -- widget ----------------------------------------------------------------
 
 def test_opens_on_the_first_pending_step(qt_app, tmp_path: Path) -> None:
-    """Motivo de existir do painel: retomar de onde o operador parou."""
+    """The reason the panel exists: resume where the operator stopped."""
     config = _config()
-    # Vacuum Pump 1 (o primeiro) inteiro pronto; do Vacuum 1 falta a amostra ON.
+    # Vacuum Pump 1 (the first) fully done; Vacuum 1 still needs the ON sample.
     for name in (
         "vacuum_pump_1_label.png",
         "vacuum_pump_1_toggle_on.png",
@@ -256,7 +256,7 @@ def test_unknown_language_in_config_falls_back_to_english(qt_app, tmp_path: Path
 
 
 def test_refresh_updates_progress_after_a_capture(qt_app, tmp_path: Path) -> None:
-    """Cada botao de calibracao chama refresh(); o checklist tem de acompanhar."""
+    """Every calibration button calls refresh(); the checklist must follow."""
     config = _config()
     guide = CalibrationGuide(config, tmp_path)
     key = progress_key("Vacuum 1", REQ_LABEL)

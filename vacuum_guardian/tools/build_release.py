@@ -1,10 +1,10 @@
-r"""Gera o pacote portatil completo (executavel + guia + ZIP).
+r"""Builds the complete portable package (executable + guide + ZIP).
 
-Existe para que o release seja reprodutivel: o PyInstaller sozinho nao copia
-o guia do operador nem compacta o resultado, e refazer isso na mao ja causou
-um pacote incompleto.
+It exists so releases are reproducible: PyInstaller alone does not copy the
+operator guide nor zip the result, and doing that by hand already produced
+an incomplete package.
 
-Uso:  .venv\Scripts\python tools/build_release.py
+Usage:  .venv\Scripts\python tools/build_release.py
 """
 
 from __future__ import annotations
@@ -25,11 +25,11 @@ def run(*args: str) -> None:
 
 
 def ensure_not_running() -> None:
-    """Aborta cedo se o app estiver aberto.
+    """Aborts early if the app is running.
 
-    Um VacuumGuardian.exe rodando mantem o arquivo de log aberto e faz o
-    PyInstaller falhar ao limpar dist/ - com um traceback que nao explica a
-    causa. Melhor detectar aqui e dizer o que fazer.
+    A running VacuumGuardian.exe holds the log file open and makes PyInstaller
+    fail while cleaning dist/ - with a traceback that does not explain the
+    cause. Better to detect it here and say what to do.
     """
     result = subprocess.run(
         ["tasklist", "/FI", "IMAGENAME eq VacuumGuardian.exe"],
@@ -37,30 +37,30 @@ def ensure_not_running() -> None:
     )
     if "VacuumGuardian.exe" in result.stdout:
         raise SystemExit(
-            "ERRO: VacuumGuardian.exe esta em execucao e trava os arquivos do build. "
-            "Feche o app (bandeja -> Exit) ou rode: taskkill /F /IM VacuumGuardian.exe"
+            "ERROR: VacuumGuardian.exe is running and locks the build files. "
+            "Close it (tray -> Exit) or run: taskkill /F /IM VacuumGuardian.exe"
         )
 
 
 def main() -> int:
     ensure_not_running()
-    print("[1/4] Limpando builds anteriores…")
+    print("[1/4] Cleaning previous builds…")
     shutil.rmtree(ROOT / "build", ignore_errors=True)
     shutil.rmtree(ROOT / "dist", ignore_errors=True)
 
-    print("[2/4] Gerando o icone…")
+    print("[2/4] Building the icon…")
     run(sys.executable, str(ROOT / "tools" / "build_icon.py"))
 
-    print("[3/4] Empacotando com o PyInstaller…")
+    print("[3/4] Packaging with PyInstaller…")
     run(sys.executable, "-m", "PyInstaller", "vacuum_guardian.spec", "--noconfirm")
 
-    print("[4/4] Copiando guia e compactando…")
+    print("[4/4] Copying the guide and zipping…")
     shutil.copy2(GUIDE, DIST / GUIDE.name)
     archive = shutil.make_archive(str(ZIP_BASE), "zip", root_dir=DIST.parent, base_dir=DIST.name)
 
     size_mb = Path(archive).stat().st_size / (1024 * 1024)
-    print(f"\nPacote pronto: {archive} ({size_mb:.0f} MB)")
-    print(f"Pasta portatil: {DIST}")
+    print(f"\nPackage ready: {archive} ({size_mb:.0f} MB)")
+    print(f"Portable folder: {DIST}")
     return 0
 
 

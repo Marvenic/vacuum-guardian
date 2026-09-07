@@ -1,4 +1,4 @@
-"""Testes da tela About: creditos corretos e versao vinda da fonte unica."""
+"""About screen: correct credits and a version from the single source."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def test_credits_are_present(qt_app) -> None:
 
 
 def test_shows_version_from_package(qt_app) -> None:
-    """Versao nao pode ser hardcoded na tela - evita divergir do pacote."""
+    """The version must not be hardcoded here - it would drift from the package."""
     assert __version__ in _text(AboutDialog(QIcon()))
 
 

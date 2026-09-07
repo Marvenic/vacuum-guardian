@@ -1,4 +1,4 @@
-"""Logica de alarme: estado (ativo/silenciado/reconhecido) e reproducao de som."""
+"""Alarm logic: state (active/snoozed/acknowledged) and sound playback."""
 
 from .controller import AlarmController, AlarmStatus
 from .sound import SoundPlayer, WinSoundPlayer

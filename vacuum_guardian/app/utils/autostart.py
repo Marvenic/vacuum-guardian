@@ -1,13 +1,13 @@
-"""Inicio automatico com o Windows (via pasta Startup).
+"""Starting automatically with Windows (through the Startup folder).
 
-Por que a pasta Startup e nao alternativas:
-- Registro (HKCU\\...\\Run): funciona, mas escrita em Registro e um gatilho
-  classico de heuristica de antivirus e e invisivel ao operador;
-- Task Scheduler: mais poderoso (ex.: rodar antes do login), porem exige
-  privilegio administrativo, raro em PC de chao de fabrica;
-- Pasta Startup: sem privilegio, visivel e removivel pelo proprio usuario.
+Why the Startup folder and not the alternatives:
+- Registry (HKCU\\...\\Run): works, but writing to the Registry is a classic
+  antivirus heuristic trigger and is invisible to the operator;
+- Task Scheduler: more powerful (it can run before login) but needs
+  administrator rights, rare on a shop-floor PC;
+- Startup folder: no privilege, visible and removable by the user.
 
-O atalho .lnk e criado via WScript.Shell (COM), presente em todo Windows.
+The .lnk shortcut is created via WScript.Shell (COM), present on every Windows.
 """
 
 from __future__ import annotations
@@ -25,27 +25,27 @@ _SHORTCUT_NAME = "Vacuum Guardian.lnk"
 
 
 def _vbs_string(value: str) -> str:
-    """Converte um texto em literal VBScript (aspas internas viram duplas).
+    """Turns text into a VBScript literal (inner quotes are doubled).
 
-    Necessario porque os argumentos do atalho precisam ir entre aspas para
-    tolerar espacos no caminho - sem escape, o VBScript ve string nao
-    terminada e falha na compilacao.
+    Needed because the shortcut arguments must be quoted to survive spaces in
+    the path - without escaping, VBScript sees an unterminated string and
+    fails to compile.
     """
     return '"' + value.replace('"', '""') + '"'
 
 
 class AutoStart:
-    """Habilita/desabilita o inicio automatico do app com o Windows."""
+    """Enables or disables starting the app with Windows."""
 
     def __init__(self, name: str = _SHORTCUT_NAME) -> None:
         self._name = name
 
     @property
     def shortcut_path(self) -> Path:
-        """Caminho do atalho.
+        """Path of the shortcut.
 
-        Lido a cada acesso (e nao no __init__) para respeitar mudancas de
-        APPDATA - o que tambem permite testar sem tocar na pasta real.
+        Read on every access (not in __init__) so it honours changes to APPDATA -
+        which is also what lets tests run without touching the real folder.
         """
         return (
             Path(os.environ["APPDATA"])
@@ -54,10 +54,10 @@ class AutoStart:
 
     @staticmethod
     def _target() -> tuple[str, str, str]:
-        """Retorna (executavel, argumentos, diretorio de trabalho).
+        """Returns (executable, arguments, working directory).
 
-        Congelado (PyInstaller): o proprio .exe, sem argumentos.
-        Desenvolvimento: pythonw.exe (sem console) + caminho do main.py.
+        Frozen (PyInstaller): the .exe itself, with no arguments.
+        Development: pythonw.exe (no console) plus the path to main.py.
         """
         if getattr(sys, "frozen", False):
             exe = sys.executable
@@ -71,13 +71,13 @@ class AutoStart:
         return self.shortcut_path.exists()
 
     def enable(self) -> bool:
-        """Cria o atalho na pasta Startup. Retorna True em caso de sucesso."""
+        """Creates the shortcut in the Startup folder. True on success."""
         target, arguments, working_dir = self._target()
         shortcut = self.shortcut_path
         icon = resource_path("assets/icon.ico")
 
-        # VBScript de poucas linhas e a forma mais portavel de criar um .lnk
-        # sem dependencia extra (pywin32/winshell).
+        # A few lines of VBScript is the most portable way to create a .lnk
+        # without an extra dependency (pywin32/winshell).
         lines = [
             'Set s = CreateObject("WScript.Shell")',
             f"Set lnk = s.CreateShortcut({_vbs_string(str(shortcut))})",
@@ -93,7 +93,7 @@ class AutoStart:
         vbs = Path(os.environ["TEMP"]) / "vg_autostart.vbs"
         try:
             shortcut.parent.mkdir(parents=True, exist_ok=True)
-            # cscript espera ANSI/UTF-16; utf-8 quebra em caminhos acentuados.
+            # cscript expects ANSI/UTF-16; utf-8 breaks on accented paths.
             vbs.write_text("\n".join(lines) + "\n", encoding="mbcs")
             subprocess.run(
                 ["cscript.exe", "//Nologo", str(vbs)],
@@ -108,7 +108,7 @@ class AutoStart:
             vbs.unlink(missing_ok=True)
 
     def disable(self) -> bool:
-        """Remove o atalho da pasta Startup."""
+        """Removes the shortcut from the Startup folder."""
         try:
             self.shortcut_path.unlink(missing_ok=True)
             logger.info("Automatic startup disabled")

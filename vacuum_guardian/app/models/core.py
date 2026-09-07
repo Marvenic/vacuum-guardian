@@ -1,8 +1,8 @@
-"""Dataclasses e enums centrais do Vacuum Guardian.
+"""Core dataclasses and enums for Vacuum Guardian.
 
-Estes tipos sao a "linguagem comum" entre captura, visao, regras e UI.
-Nenhum deles conhece OpenCV, Qt ou mss - apenas dados puros, o que mantem
-as camadas desacopladas (Dependency Inversion) e faceis de testar.
+These types are the shared language between capture, vision, rules and UI.
+None of them knows OpenCV, Qt or mss - plain data only, which keeps the
+layers decoupled and easy to test.
 """
 
 from __future__ import annotations
@@ -13,28 +13,28 @@ from enum import Enum
 
 
 class PumpState(Enum):
-    """Estado detectado de um indicador (toggle) na tela do OSAI."""
+    """Detected state of one indicator (toggle) on the OSAI screen."""
 
     ON = "ON"
     OFF = "OFF"
-    UNKNOWN = "UNKNOWN"  # visivel, mas leitura inconclusiva
-    # O menu de softkeys do OSAI tem rolagem: o indicador pode simplesmente
-    # nao estar na tela. Isso e diferente de "li e nao entendi" - por isso
-    # tem estado proprio, para a mensagem ao operador poder ser especifica.
+    UNKNOWN = "UNKNOWN"  # on screen, but the reading was inconclusive
+    # The OSAI softkey menu scrolls, so the indicator may simply not be on
+    # screen. That is different from "read it and could not tell", so it
+    # gets its own state and the operator gets a specific message.
     NOT_VISIBLE = "NOT_VISIBLE"
 
     @property
     def is_verifiable(self) -> bool:
-        """True apenas quando o estado foi realmente comprovado (ON ou OFF)."""
+        """True only when the state was actually proven (ON or OFF)."""
         return self in (PumpState.ON, PumpState.OFF)
 
 
 class AlertLevel(Enum):
-    """Ha alerta ou nao.
+    """Whether there is an alert.
 
-    Existiam dois niveis (laranja "nao verifiquei" e vermelho "esta
-    desligado"). Na pratica a acao do operador era a mesma - conferir o vacuo
-    - e duas telas diferentes so somavam ruido. Ficou um: laranja.
+    There used to be two levels (orange "could not verify" and red "it is
+    off"). In practice the operator's next move was the same - go and check
+    the vacuum - so two different screens only added noise. One is left.
     """
 
     NONE = 0
@@ -42,24 +42,24 @@ class AlertLevel(Enum):
 
 
 class RunPhase(Enum):
-    """Onde o operador esta na largada de um programa, lido no campo Iso lines.
+    """Where the operator is in the start of a program, read from Iso lines.
 
-    Em stand-by o campo mostra codigo irrelevante. Ao carregar o arquivo o
-    OSAI pede CLOSE THE DOORS - e o aviso de que o corte vai comecar. Quando
-    esse texto sai e o conteudo muda, o programa esta rodando de fato.
+    On stand-by the field shows irrelevant code. Once the file is loaded OSAI
+    asks to CLOSE THE DOORS - the sign that cutting is about to start. When
+    that text goes away and the content changes, the program is really running.
     """
 
     IDLE = "IDLE"        # stand-by
-    DOORS = "DOORS"      # "CLOSE THE DOORS" na tela: hora de conferir o vacuo
-    RUNNING = "RUNNING"  # texto mudou depois do aviso: programa em execucao
+    DOORS = "DOORS"      # "CLOSE THE DOORS" on screen: time to check the vacuum
+    RUNNING = "RUNNING"  # text changed after the warning: program running
 
 
 @dataclass(frozen=True)
 class Roi:
-    """Regiao de interesse em pixels, relativa ao canto superior-esquerdo da JANELA do OSAI.
+    """Region of interest in pixels, relative to the top-left of the OSAI WINDOW.
 
-    Guardar coordenadas relativas a janela (e nao a tela) permite que a janela
-    seja movida sem invalidar a configuracao.
+    Storing coordinates relative to the window (not the screen) means the window
+    can be moved without invalidating the calibration.
     """
 
     x: int
@@ -68,17 +68,17 @@ class Roi:
     height: int
 
     def is_valid(self) -> bool:
-        """ROI precisa ter area positiva para ser usavel."""
+        """A ROI needs a positive area to be usable."""
         return self.width > 0 and self.height > 0 and self.x >= 0 and self.y >= 0
 
 
 @dataclass(frozen=True)
 class ToggleGeometry:
-    """Onde fica o toggle (pill ON/OFF) EM RELACAO ao rotulo do indicador.
+    """Where the ON/OFF pill sits RELATIVE to the indicator label.
 
-    O rotulo e localizado por template matching em qualquer ponto da tela
-    (o menu rola), entao a posicao do toggle so pode ser expressa como um
-    deslocamento a partir do rotulo encontrado - nunca como coordenada fixa.
+    The label is located by template matching anywhere on screen (the menu
+    scrolls), so the toggle position can only be expressed as an offset from
+    the label that was found - never as a fixed coordinate.
     """
 
     dx: int
@@ -92,99 +92,113 @@ class ToggleGeometry:
 
 @dataclass
 class IndicatorConfig:
-    """Um toggle da tela do OSAI que precisa estar ON durante programas monitorados.
+    """A toggle on the OSAI screen that must be ON while a program runs.
 
-    O requisito atual exige dois: "Vacuum Pump 1" e "Vacuum 1" (nomes exatos
-    como aparecem na tela do OSAI). Modelar como lista permite acrescentar
-    outros apenas editando o config.json, sem mudanca de codigo.
+    The current requirement lists two: "Vacuum Pump 1" and "Vacuum 1" (exact
+    names as shown on the OSAI screen). Modelling them as a list allows adding
+    more by editing config.json alone, with no code change.
     """
 
     name: str
-    roi: Roi | None = None  # definido na calibracao (modo posicao fixa)
-    # Modo "busca por rotulo" (tolerante a rolagem do menu): quando definido,
-    # tem prioridade sobre a ROI fixa.
+    roi: Roi | None = None  # set during calibration (fixed-position mode)
+    # Label-search mode (survives menu scrolling): when set, it takes
+    # precedence over the fixed ROI.
     toggle: ToggleGeometry | None = None
 
     @property
     def slug(self) -> str:
-        """Identificador para nomes de arquivo de template (ex.: 'vacuum_pump_1')."""
+        """Identifier used in template file names (e.g. 'vacuum_pump_1')."""
         return self.name.strip().lower().replace(" ", "_")
 
 
 @dataclass(frozen=True)
 class IndicatorReading:
-    """Leitura de um indicador em um ciclo de deteccao."""
+    """One indicator reading from a detection cycle."""
 
     state: PumpState
-    confidence: float  # score do template matching (0.0 se UNKNOWN)
+    confidence: float  # template matching score (0.0 when UNKNOWN)
 
 
 @dataclass(frozen=True)
 class DetectionResult:
-    """Resultado de um ciclo completo de deteccao (indicadores + programa)."""
+    """Result of a full detection cycle (indicators + program)."""
 
-    indicators: dict[str, IndicatorReading]  # chave = nome do indicador
+    indicators: dict[str, IndicatorReading]  # key = indicator name
     program_name: str
     timestamp: datetime
-    elapsed_ms: float  # tempo total de processamento do ciclo
-    run_phase: RunPhase = RunPhase.IDLE  # lido no campo Iso lines
+    elapsed_ms: float  # total processing time of the cycle
+    run_phase: RunPhase = RunPhase.IDLE  # read from the Iso lines field
 
 
 @dataclass(frozen=True)
 class AlarmDecision:
-    """Saida do Rule Engine para um DetectionResult."""
+    """Rule engine output for one DetectionResult."""
 
     is_monitored_program: bool
-    offending: tuple[str, ...]  # indicadores confirmados OFF
-    unknown: tuple[str, ...]    # indicadores que nao puderam ser lidos
+    offending: tuple[str, ...]  # indicators proven OFF
+    unknown: tuple[str, ...]    # indicators that could not be read
     level: AlertLevel = AlertLevel.NONE
-    reason: str = ""  # texto pronto para o popup, montado pelo Rule Engine
+    reason: str = ""  # ready-made popup text, built by the rule engine
 
     @property
     def should_alarm(self) -> bool:
-        """Qualquer nivel diferente de NONE exibe o popup."""
+        """Any level other than NONE shows the popup."""
         return self.level is not AlertLevel.NONE
 
 
 @dataclass
 class AppConfig:
-    """Configuracao persistida em config.json.
+    """Configuration persisted in config.json.
 
-    Mutavel de proposito: a tela de configuracoes edita esta instancia e pede
-    ao ConfigService para salvar.
+    Mutable on purpose: the settings screen edits this instance and asks
+    ConfigService to save it.
     """
 
-    window_title_hint: str = "OSAI"  # substring do titulo da janela a capturar
-    capture_interval_s: float = 1.0  # intervalo entre ciclos de deteccao
+    window_title_hint: str = "OSAI"  # substring of the window title to capture
+    capture_interval_s: float = 1.0  # delay between detection cycles
     trigger_programs: list[str] = field(default_factory=lambda: ["SINK", "CUTOUT", "BOWL"])
-    template_threshold: float = 0.80  # score minimo do template matching
+    template_threshold: float = 0.80  # minimum template matching score
     indicators: list[IndicatorConfig] = field(
         default_factory=lambda: [IndicatorConfig("Vacuum Pump 1"), IndicatorConfig("Vacuum 1")]
     )
     program_roi: Roi | None = None
-    alarm_wav: str = ""  # vazio = assets/alarm.wav
-    # Som opcional: fabricas sao barulhentas e o PC da CNC pode nao ter
-    # alto-falante. Com o som desligado, o alerta visual (popup pulsante)
-    # e o unico canal - por isso ele precisa ser forte por si so.
+    alarm_wav: str = ""  # empty = assets/alarm.wav
+    # Sound is optional: shops are noisy and the CNC PC may have no
+    # speakers. With sound off the visual alert (a pulsing popup) is the
+    # only channel - which is why it has to stand on its own.
     alarm_sound_enabled: bool = True
-    # Depois que o operador clica, o alerta fica quieto por este tempo.
-    # 20 min cobre um programa simples; um sink cutout leva 20-35 min. Sem
-    # isso o aviso reaparecia a cada troca de severidade (laranja <-> vermelho)
-    # e o operador nao conseguia trabalhar.
+    # After the operator clicks, the alert stays quiet for this long.
+    # 20 min covers a simple program; a sink cutout takes 20-35 min. Without
+    # it the warning came back seconds later and the operator could not
+    # get any work done.
     alarm_snooze_minutes: float = 20.0
 
-    # -- momento critico (armar/desarmar) ---------------------------------
-    # O ponto de risco e lido no campo "Iso lines" do OSAI (ver RunPhase):
-    # mais confiavel que o nome do programa, porque todos se chamam
-    # <numero>.CNC.
-    # Indicador que DEVE estar ON no momento critico. "Vacuum 1" e o mais
-    # importante: sem ele a pedra nao esta presa.
+    # -- the critical moment ---------------------------------------------
+    # The risk window is read from the OSAI "Iso lines" field (see RunPhase):
+    # more reliable than the program name, because every program is called
+    # <number>.CNC.
+    # The indicator that MUST be ON at the critical moment. "Vacuum 1" is
+    # the important one: without it the stone is not held down.
     critical_indicator: str = "Vacuum 1"
-    # Campo "Iso lines" (canto inferior esquerdo do OSAI): e onde aparece o
-    # pedido CLOSE THE DOORS antes do corte. None = recurso desligado.
+    # The "Iso lines" field (bottom left of the OSAI screen): where the
+    # CLOSE THE DOORS request appears before cutting. None = feature off.
     iso_roi: Roi | None = None
-    close_doors_keyword: str = "CLOSE THE DOOR"  # sem o S: casa singular e plural
-    label_threshold: float = 0.75  # score minimo para dar o rotulo como encontrado
-    # Idioma do guia de calibracao ("en"/"pt"). E o unico texto bilingue do
-    # app: o operador alterna no proprio painel e a escolha fica gravada.
+    close_doors_keyword: str = "CLOSE THE DOOR"  # no final S: matches both forms
+    label_threshold: float = 0.75  # minimum score to call the label found
+    # Language of the calibration guide ("en"/"pt"). It is the only bilingual
+    # text in the app: the operator switches it and the choice is stored.
     guide_language: str = "en"
+
+    # -- usage report (opt-in) --------------------------------------------
+    # Off by default. The app asks ONCE, showing what would be sent;
+    # `telemetry_prompted` keeps it from asking again on every start.
+    # With no URL nothing is sent, even if consent was given.
+    telemetry_enabled: bool = False
+    telemetry_prompted: bool = False
+    telemetry_url: str = ""
+    install_id: str = ""  # random uuid, created on first run
+    # OPTIONAL operator card. Empty = only the anonymous counters are sent.
+    operator_company: str = ""
+    operator_name: str = ""
+    operator_email: str = ""
+    operator_phone: str = ""

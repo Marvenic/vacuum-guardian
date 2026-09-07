@@ -1,10 +1,10 @@
-"""O proprio popup nao pode corromper a leitura da tela.
+"""The popup itself must not corrupt the screen reading.
 
-Falha real na CNC: o aviso LARANJA aparecia, o operador clicava, e o app
-mostrava o VERMELHO em seguida. O popup cobre a tela do OSAI, entao o OCR do
-campo "Iso lines" lia os pixels do proprio aviso. O texto deixava de ser
+Real CNC failure: the warning appeared, the operator clicked, and the app
+showed it again straight after. The popup covers the OSAI screen, so the OCR
+of the "Iso lines" field read the warning's own pixels. The text stopped
 "CLOSE THE DOORS", o watcher concluia "o programa comecou" (DOORS -> RUNNING)
-e, com o vacuo fora de ON, a regra virava CRITICAL.
+and, with the vacuum not ON, the rule escalated.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ class _Locator:
 
 @pytest.fixture()
 def engine(tmp_path: Path, monkeypatch):  # type: ignore[no-untyped-def]
-    """Motor real, mas com captura e OCR controlados pelo teste."""
+    """A real engine, but with capture and OCR driven by the test."""
     (tmp_path / "logs").mkdir(parents=True, exist_ok=True)
     config = AppConfig(iso_roi=Roi(100, 900, 300, 60))
     engine = MonitorEngine(config, tmp_path)
@@ -50,11 +50,11 @@ def test_phase_follows_the_iso_field_when_nothing_covers_it(engine) -> None:  # 
 
 
 def test_popup_over_the_iso_field_freezes_the_phase(engine) -> None:  # type: ignore[no-untyped-def]
-    """O nucleo do bug: laranja + clique nao pode virar vermelho sozinho."""
+    """The core of the bug: an alert plus a click must not escalate on its own."""
     eng, texts = engine
     assert eng.run_cycle().result.run_phase is RunPhase.DOORS
 
-    # Popup de alarme centrado, cobrindo a ROI do campo Iso lines.
+    # The alarm popup centred, covering the Iso lines ROI.
     eng.set_occlusion((0, 800, 1920, 280))
     texts["iso"] = "VACUUM IS OFF!"  # o que o OCR leria do proprio aviso
 
@@ -75,7 +75,7 @@ def test_phase_resumes_after_the_popup_leaves_the_screen(engine) -> None:  # typ
 
 
 def test_popup_elsewhere_on_the_screen_does_not_freeze(engine) -> None:  # type: ignore[no-untyped-def]
-    """So congela se cobrir a ROI - uma janela num canto nao pode cegar o app."""
+    """It only freezes if it covers the ROI - a window in a corner must not blind it."""
     eng, texts = engine
     eng.run_cycle()
     eng.set_occlusion((0, 0, 200, 100))  # canto superior esquerdo, longe da ROI

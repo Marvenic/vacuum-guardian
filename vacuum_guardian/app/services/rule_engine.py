@@ -1,25 +1,25 @@
-"""Rule Engine: decide SE ha alerta e QUAL a severidade.
+"""Rule engine: decides WHETHER there is an alert and WHY.
 
-Regra principal (momento critico):
-    Depois que o operador confirma MATERIAL THICKNESS e EXCEEDING MATERIAL,
-    a pedra pode se mover. A partir dai o indicador critico ("Vacuum 1")
-    precisa estar comprovadamente ON:
+Main rule (the critical moment):
+    Once the Iso lines field announces that a cut is about to start (or is
+    already running), the critical indicator ("Vacuum 1") must be proven ON:
+    
 
         ON                      -> nada
         OFF                     -> WARNING (laranja)
         NOT_VISIBLE / UNKNOWN   -> WARNING  (laranja)
 
-    O terceiro caso e a decisao de projeto mais importante aqui: o menu do
-    OSAI rola, entao o "Vacuum 1" pode simplesmente nao estar na tela. Ficar
-    calado seria fingir que esta tudo bem sem ter verificado nada - por isso
-    "nao consegui verificar" tambem alerta, so que em nivel menor.
+    The third case is the most important design decision here: the OSAI menu
+    scrolls, so "Vacuum 1" may simply not be on screen. Staying quiet would
+    be pretending all is well without having checked anything - so "could not
+    verify" alerts too.
 
-Regra secundaria (legado): nome do programa casa com trigger_programs E
-algum indicador esta OFF -> WARNING. Continua util para instalacoes cujos
-programas tenham nomes descritivos.
+Secondary rule (legacy): the program name matches trigger_programs AND
+some indicator is OFF -> alert. Still useful for installations whose
+programs have descriptive names.
 
-Puro de proposito (sem I/O, sem estado): entrada DetectionResult, saida
-AlarmDecision. Isso o torna trivialmente testavel e desacoplado da UI.
+Pure on purpose (no I/O, no state): DetectionResult in, AlarmDecision out.
+That makes it trivially testable and independent of the UI.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ class RuleEngine:
         trigger_programs: list[str],
         critical_indicator: str = "Vacuum 1",
     ) -> None:
-        # Normaliza uma vez; comparacao e sempre em maiusculas.
+        # Normalise once; every comparison is upper case.
         self._triggers = [t.upper() for t in trigger_programs if t.strip()]
         self._critical = critical_indicator.strip()
 
@@ -42,12 +42,12 @@ class RuleEngine:
         return self._critical
 
     def is_monitored_program(self, program_name: str) -> bool:
-        """True se qualquer palavra-gatilho aparece no nome do programa."""
+        """True if any trigger word appears in the program name."""
         name = program_name.upper()
         return bool(name) and any(t in name for t in self._triggers)
 
     def _critical_reading(self, result: DetectionResult):
-        """Leitura do indicador critico; casa nome exato e, se falhar, sem espacos."""
+        """Reads the critical indicator: exact name first, then ignoring spaces."""
         reading = result.indicators.get(self._critical)
         if reading is not None:
             return reading
@@ -70,9 +70,9 @@ class RuleEngine:
         level = AlertLevel.NONE
         reason = ""
 
-        # -- regra do campo Iso lines --------------------------------------
-        # CLOSE THE DOORS = ainda da tempo de ligar o vacuo: aviso laranja.
-        # Texto mudou depois disso = o programa ja esta cortando: vermelho.
+        # -- Iso lines rule ------------------------------------------------
+        # CLOSE THE DOORS = there is still time to switch the vacuum on.
+        # Text changed after that = the machine is already cutting.
         if result.run_phase is RunPhase.DOORS:
             reading = self._critical_reading(result)
             state = reading.state if reading is not None else PumpState.NOT_VISIBLE
@@ -93,7 +93,7 @@ class RuleEngine:
                 level = AlertLevel.WARNING
                 reason = f"Program running and {self._critical} could not be verified."
 
-        # -- regra secundaria (legado) -------------------------------------
+        # -- secondary rule (legacy) ---------------------------------------
         if monitored and offending and level is AlertLevel.NONE:
             level = AlertLevel.WARNING
             reason = "OFF: " + ", ".join(offending)

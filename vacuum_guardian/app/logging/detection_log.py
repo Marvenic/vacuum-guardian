@@ -2,11 +2,11 @@
 
 Por que um CSV separado do log do loguru:
 - o .log e para diagnostico humano; o CSV e para analise (Excel, Power BI);
-- colunas estaveis permitem correlacionar alarmes com turnos/programas.
+- stable columns allow correlating alarms with shifts and programs.
 
 Estrategia de escrita: apenas MUDANCAS de estado (ou eventos de alarme) sao
 gravadas. Registrar todos os ciclos geraria ~86 mil linhas/dia a 1 Hz, sem
-ganho de informacao. Assim o arquivo continua legivel e o disco saudavel em
+gain in information. This keeps the file readable and the disk healthy under
 operacao continua.
 """
 
@@ -22,10 +22,10 @@ from ..models import AlarmDecision, DetectionResult
 
 
 class DetectionLog:
-    """Escreve uma linha por transicao de estado detectada."""
+    """Writes one row per detected state transition."""
 
-    # Colunas novas entram sempre NO FIM: planilhas e relatorios ja feitos
-    # sobre arquivos antigos continuam apontando para as mesmas posicoes.
+    # New columns always go AT THE END: spreadsheets and reports built on
+    # older files keep pointing at the same positions.
     _HEADER = [
         "date",
         "time",
@@ -44,7 +44,7 @@ class DetectionLog:
         self._ensure_header()
 
     def _ensure_header(self) -> None:
-        """Cria o arquivo com cabecalho na primeira execucao."""
+        """Creates the file with a header on first run."""
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             if not self._path.exists() or self._path.stat().st_size == 0:
@@ -55,12 +55,12 @@ class DetectionLog:
 
     @staticmethod
     def _signature(result: DetectionResult, decision: AlarmDecision) -> str:
-        """Identidade do estado atual; muda => vale a pena gravar uma linha."""
+        """Identity of the current state; a change means a row is worth writing."""
         states = ",".join(f"{k}={v.state.value}" for k, v in sorted(result.indicators.items()))
         return f"{result.program_name}|{states}|{decision.level.name}|{result.run_phase.value}"
 
     def record(self, result: DetectionResult, decision: AlarmDecision) -> bool:
-        """Grava se o estado mudou desde a ultima linha. Retorna True se gravou."""
+        """Writes if the state changed since the last row. True when it wrote."""
         signature = self._signature(result, decision)
         if signature == self._last_signature:
             return False
@@ -87,14 +87,14 @@ class DetectionLog:
 
 
 class OverrideLog:
-    """Registra quando o operador iniciou o programa mesmo sem o vacuo ligado.
+    """Records when the operator started a program with the vacuum off.
 
-    Arquivo proprio (e nao uma coluna no detections.csv) porque o publico e
-    outro: o gerente quer uma lista curta de "ignorou o aviso e cortou assim
-    mesmo", com data e hora, sem ter de filtrar milhares de linhas.
+    A file of its own (not a column in detections.csv) because the audience is
+    different: a manager wants a short list of "ignored the warning and cut
+    anyway", with date and time, without filtering thousands of rows.
 
-    Uma linha por evento: a transicao CLOSE THE DOORS -> programa rodando com
-    o vacuo fora do estado ON.
+    One row per event: the CLOSE THE DOORS -> running transition with the
+    vacuum not in the ON state.
     """
 
     _HEADER = ["date", "time", "program", "indicator", "state_at_start"]
@@ -113,7 +113,7 @@ class OverrideLog:
             logger.error("Could not prepare {}: {}", self._path, exc)
 
     def record(self, when: datetime, program: str, indicator: str, state: str) -> bool:
-        """Grava um override. Retorna True se conseguiu gravar."""
+        """Records an override. True when it managed to write."""
         row = [
             f"{when:%Y-%m-%d}",
             f"{when:%H:%M:%S}",
@@ -135,12 +135,12 @@ class OverrideLog:
 
 
 class AlarmActionLog:
-    """Registra o que o operador fez quando o alarme apareceu.
+    """Records what the operator did when the alarm appeared.
 
-    Arquivo proprio porque a pergunta e especifica e frequente: "o alarme
-    tocou, alguem viu?". Uma linha por clique, com o motivo que estava na tela
-    e ate quando o aviso ficou silenciado - depois de dispensado, o popup sai
-    e essa e a unica prova de que ele foi visto.
+    A file of its own because the question is specific and frequent: "the alarm
+    fired, did anyone see it?". One row per click, with the reason that was on
+    screen and how long it was silenced for - once dismissed the popup is gone
+    and this is the only proof it was seen.
     """
 
     _HEADER = ["date", "time", "action", "reason", "silenced_until"]
@@ -162,7 +162,7 @@ class AlarmActionLog:
         self, when: datetime, action: str, reason: str,
         silenced_until: datetime | None = None,
     ) -> bool:
-        """Grava uma acao do operador. Retorna True se conseguiu gravar."""
+        """Records an operator action. True when it managed to write."""
         row = [
             f"{when:%Y-%m-%d}",
             f"{when:%H:%M:%S}",
